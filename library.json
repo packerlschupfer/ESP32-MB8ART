@@ -1,0 +1,43 @@
+{
+  "name": "ESP32-MB8ART",
+  "version": "0.1.0",
+  "description": "ESP32 driver for MB8ART 8-channel temperature acquisition module via Modbus RTU",
+  "keywords": ["temperature", "sensors", "modbus", "esp32", "industrial", "thermocouples", "pt100", "pt1000"],
+  "authors": [
+    {
+      "name": "packerlschupfer",
+      "email": "packerlschupfer@noreply.github.com",
+      "maintainer": true
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/packerlschupfer/ESP32-MB8ART.git"
+  },
+  "homepage": "https://github.com/packerlschupfer/ESP32-MB8ART",
+  "license": "MIT",
+  "frameworks": ["arduino", "espidf"],
+  "platforms": ["espressif32"],
+  "include": "MB8ART.h",
+  "dependencies": {
+    "ESP32-ModbusDevice": "https://github.com/packerlschupfer/ESP32-ModbusDevice.git",
+    "ESP32-MutexGuard": "https://github.com/packerlschupfer/ESP32-MutexGuard.git",
+    "ESP32-IDeviceInstance": "https://github.com/packerlschupfer/ESP32-IDeviceInstance.git"
+  },
+  "build": {
+    "flags": [
+      "-I$PROJECT_DIR/include"
+    ],
+    "srcFilter": [
+      "+<MB8ART.cpp>",
+      "+<MB8ARTDevice.cpp>",
+      "+<MB8ARTModbus.cpp>",
+      "+<MB8ARTState.cpp>",
+      "+<MB8ARTConfig.cpp>",
+      "+<MB8ARTSensor.cpp>",
+      "+<MB8ARTEvents.cpp>",
+      "+<MB8ARTSharedResources.cpp>",
+      "+<TemperatureControlModule.cpp>"
+    ]
+  }
+}
