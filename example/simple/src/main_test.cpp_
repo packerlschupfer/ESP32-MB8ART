@@ -1,0 +1,133 @@
+#include <Arduino.h>
+#include <MB8ART.h>
+#include <esp32ModbusRTU.h>
+
+// Create global instances
+esp32ModbusRTU modbusMaster(&Serial2, 16);  // GPIO16 for DE/RE control
+MB8ART* tempModule = nullptr;
+
+// Simple logger function
+void log(const char* format, ...) {
+    char buffer[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    Serial.println(buffer);
+}
+
+// External logger for MB8ART library
+Logger logger;
+
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+    
+    Serial.println("\n\n=== MB8ART MutexGuard Integration Test ===");
+    Serial.println("This test verifies that the MutexGuard library works correctly with MB8ART");
+    
+    // Initialize logger (required by MB8ART)
+    logger.init(512);
+    logger.enableLogging(true);
+    logger.setLogLevel(ESP_LOG_DEBUG);
+    
+    // Initialize Serial2 for RS485
+    Serial2.begin(9600, SERIAL_8N1, 26, 27);  // RX=26, TX=27
+    modbusMaster.begin();
+    
+    // Create MB8ART instance
+    tempModule = new MB8ART(0x01, modbusMaster, "TempModule1");
+    
+    // Test 1: Basic initialization (uses initMutex with MutexGuard)
+    Serial.println("\n[TEST 1] Testing initialization with MutexGuard...");
+    tempModule->initialize();
+    
+    // Wait for initialization
+    if (tempModule->waitForInitializationComplete(5000)) {
+        Serial.println("✓ Initialization successful - initMutex with MutexGuard works!");
+        
+        // Test 2: Configuration (uses mutexModbus with MutexGuard)
+        Serial.println("\n[TEST 2] Testing channel configuration with MutexGuard...");
+        auto result = tempModule->configureAllChannels(
+            mb8art::ChannelMode::THERMOCOUPLE,
+            static_cast<uint16_t>(mb8art::ThermocoupleType::TYPE_K)
+        );
+        
+        if (result == mb8art::SensorErrorCode::SUCCESS) {
+            Serial.println("✓ Channel configuration successful - mutexModbus with MutexGuard works!");
+        } else {
+            Serial.println("✗ Channel configuration failed");
+        }
+        
+    } else {
+        Serial.println("✗ Initialization failed!");
+    }
+    
+    Serial.println("\n=== Setup Complete ===");
+}
+
+void loop() {
+    static unsigned long lastRequest = 0;
+    static int testCount = 0;
+    
+    if (millis() - lastRequest > 5000) {  // Every 5 seconds
+        lastRequest = millis();
+        testCount++;
+        
+        Serial.printf("\n[LOOP TEST %d] Testing data operations with MutexGuard...\n", testCount);
+        
+        if (tempModule && tempModule->isInitialized()) {
+            // Test 3: Data request (uses mutexModbus with MutexGuard)
+            if (tempModule->requestData()) {
+                Serial.println("✓ Data request sent successfully");
+                
+                // Wait for data
+                if (tempModule->waitForData()) {
+                    // Process the data
+                    tempModule->processData();
+                    
+                    // Test 4: getData method (uses getMutexInstance() with MutexGuard)
+                    Serial.println("\nTesting getData() with MutexGuard...");
+                    IDeviceInstance::DataResult result = tempModule->getData(IDeviceInstance::DeviceDataType::TEMPERATURE);
+                    
+                    if (result.success) {
+                        Serial.println("✓ getData() successful - getMutexInstance() with MutexGuard works!");
+                        Serial.printf("  Retrieved %d temperature values\n", result.values.size());
+                        
+                        // Display temperatures
+                        for (int i = 0; i < 8; i++) {
+                            if (i < result.values.size()) {
+                                if (!std::isnan(result.values[i])) {
+                                    Serial.printf("  Channel %d: %.2f°C\n", i, result.values[i]);
+                                } else {
+                                    Serial.printf("  Channel %d: Not connected/Invalid\n", i);
+                                }
+                            }
+                        }
+                    } else {
+                        Serial.println("✗ getData() failed");
+                    }
+                    
+                    // Test 5: Connection status (uses mutexModbus with MutexGuard)
+                    Serial.println("\nTesting connection status check...");
+                    if (tempModule->isModuleResponsive()) {
+                        Serial.println("✓ Module is responsive - connection status check works!");
+                        int activeChannels = tempModule->getActiveChannelCount();
+                        Serial.printf("  Active channels: %d\n", activeChannels);
+                    } else {
+                        Serial.println("✗ Module not responsive");
+                    }
+                    
+                } else {
+                    Serial.println("✗ Failed to receive data");
+                }
+            } else {
+                Serial.println("✗ Failed to request data");
+            }
+        } else {
+            Serial.println("Module not initialized");
+        }
+        
+        Serial.println("\n--- All MutexGuard operations completed successfully ---");
+    }
+}

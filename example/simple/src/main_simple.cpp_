@@ -1,0 +1,163 @@
+#include <Arduino.h>
+#include "MB8ART.h"
+#include "ModbusDevice.h"
+#include <esp32ModbusRTU.h>
+#include "Logger.h"
+#include "config/ProjectConfig.h"  // For MB8ART_ADDRESS
+
+// Create global instances
+esp32ModbusRTU modbusMaster(&Serial1, 16);  // GPIO16 for DE/RE pin (or -1 for auto)
+MB8ART* tempModule = nullptr;
+
+// Configuration
+// MB8ART_ADDRESS is defined in platformio.ini
+// const uint8_t MB8ART_ADDRESS = 0x01;
+const uint32_t MODBUS_BAUD = 9600;
+const uint8_t RX_PIN = 17;  // Adjust for your hardware
+const uint8_t TX_PIN = 18;  // Adjust for your hardware
+
+void setup() {
+    Serial.begin(115200);
+    while (!Serial) { delay(10); }
+    delay(2000);
+    
+    Serial.println("\n\n=== MB8ART Temperature Module Example ===");
+    
+    // Initialize logger if using custom logger
+    #ifdef MODBUSDEVICE_USE_CUSTOM_LOGGER
+    Serial.println("\n--- Initializing Custom Logger ---");
+    Logger::getInstance().setLevel(ESP_LOG_DEBUG);
+    Logger::getInstance().setSerialOutput(true);
+    #endif
+    
+    Serial.println("\n--- Hardware Configuration ---");
+    Serial.printf("Serial1 Pins: RX=GPIO%d, TX=GPIO%d\n", RX_PIN, TX_PIN);
+    Serial.printf("Baud Rate: %d, 8N1\n", MODBUS_BAUD);
+    Serial.printf("MB8ART Address: 0x%02X\n", MB8ART_ADDRESS);
+    
+    // Initialize Serial1 for Modbus
+    Serial.println("\n--- Initializing Modbus Serial ---");
+    Serial1.begin(MODBUS_BAUD, SERIAL_8N1, RX_PIN, TX_PIN);
+    delay(100);  // Give serial time to initialize
+    
+    Serial.println("Serial1 initialized");
+    
+    // Set global ModbusRTU instance
+    setGlobalModbusRTU(&modbusMaster);
+    
+    // Register the global Modbus handlers
+    Serial.println("\n--- Registering Modbus Handlers ---");
+    modbusMaster.onData(mainHandleData);
+    modbusMaster.onError([](esp32Modbus::Error error) {
+        handleError(0, error);  // Call with dummy address
+    });
+    
+    // Start the Modbus master
+    Serial.println("\n--- Starting Modbus Master ---");
+    modbusMaster.begin();
+    Serial.println("Modbus master started");
+    
+    // Create MB8ART instance
+    Serial.println("\n--- Creating MB8ART Instance ---");
+    tempModule = new MB8ART(MB8ART_ADDRESS, "MB8ART1");
+    Serial.println("MB8ART instance created");
+    
+    // Note: Device registration happens automatically during initialize()
+    // No need to call registerModbusDevice() anymore
+    
+    // Add a delay before initialization
+    Serial.println("\n--- Waiting 2 seconds before initialization ---");
+    delay(2000);
+    
+    // Initialize the device
+    Serial.println("\n--- Starting MB8ART Initialization ---");
+    uint32_t startTime = millis();
+    
+    auto initResult = tempModule->initialize();
+    if (initResult.isOk()) {
+        Serial.println("\n✓ MB8ART initialized successfully!");
+        Serial.printf("  Initialization took: %lu ms\n", millis() - startTime);
+        
+        // Try to get some info
+        Serial.println("\n--- Module Information ---");
+        Serial.printf("Module offline: %s\n", 
+                     tempModule->isModuleOffline() ? "YES" : "NO");
+        Serial.printf("Active channels: %d\n", 
+                     tempModule->getActiveChannelCount());
+                     
+        // Print channel diagnostics
+        tempModule->printChannelDiagnostics();
+        
+    } else {
+        Serial.println("\n✗ MB8ART initialization FAILED!");
+        Serial.printf("  Error after: %lu ms\n", millis() - startTime);
+        
+        // Check if device is offline
+        if (tempModule->isModuleOffline()) {
+            Serial.println("  Device is OFFLINE - check wiring and power");
+        }
+    }
+    
+    Serial.println("\n=== Setup Complete ===");
+}
+
+void loop() {
+    static unsigned long lastAttempt = 0;
+    static int attemptCount = 0;
+    
+    // Every 5 seconds, try to communicate
+    if (millis() - lastAttempt > 5000) {
+        lastAttempt = millis();
+        attemptCount++;
+        
+        Serial.printf("\n--- Communication Attempt %d ---\n", attemptCount);
+        
+        if (tempModule) {
+            // Check if offline
+            if (tempModule->isModuleOffline()) {
+                Serial.println("Module is OFFLINE");
+                
+                // Try to probe device
+                // probeDevice() is now public, so this should work
+                if (tempModule->probeDevice()) {
+                    Serial.println("Device probe successful - back online!");
+                }
+            } else if (tempModule->isInitialized()) {
+                Serial.println("Requesting temperature data...");
+                
+                // Request temperature data
+                auto result = tempModule->reqTemperatures(8, false);  // 8 channels, low res
+                if (result.isOk()) {
+                    Serial.println("Temperature request sent");
+                    
+                    if (tempModule->waitForData()) {
+                        Serial.println("Data received!");
+                        tempModule->processData();
+                        
+                        // Display temperatures
+                        Serial.println("\nChannel Readings:");
+                        for (int i = 0; i < 8; i++) {
+                            float temp = tempModule->getSensorTemperature(i);
+                            bool valid = tempModule->wasSensorLastCommandSuccessful(i);
+                            
+                            if (valid) {
+                                Serial.printf("  Channel %d: %.1f°C\n", i + 1, temp);
+                            } else {
+                                Serial.printf("  Channel %d: Not connected\n", i + 1);
+                            }
+                        }
+                    } else {
+                        Serial.println("Timeout waiting for data");
+                    }
+                } else {
+                    Serial.println("Failed to send temperature request");
+                }
+            } else {
+                Serial.println("Module not initialized");
+            }
+        }
+    }
+    
+    // Small delay
+    delay(10);
+}
