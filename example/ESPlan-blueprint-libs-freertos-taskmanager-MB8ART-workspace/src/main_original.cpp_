@@ -1,0 +1,477 @@
+#ifdef MAIN_DEBUG
+#define DEBUG_PRINT_MAIN(...) getLogger().logNnl(ESP_LOG_DEBUG, "Main", __VA_ARGS__)
+#define DEBUG_PRINTLN_MAIN(...) getLogger().log(ESP_LOG_DEBUG, "Main", __VA_ARGS__)
+#define DEBUG_PRINTINL_MAIN(...) getLogger().logInL(__VA_ARGS__)
+#else
+#define DEBUG_PRINT_MAIN(...)
+#define DEBUG_PRINTLN_MAIN(...)
+#define DEBUG_PRINTINL_MAIN(...)
+#endif
+
+#define TIMER_TRIGGER_BIT           (1UL << 12UL)
+
+
+#include <Arduino.h>
+#include <Logger.h>
+#include <TaskManager.h>
+
+// // LAN8720A parameters
+// #define ETH_POWER_PIN -1
+// #define ETH_ADDR 0
+// #define ETH_MDC_PIN 23
+// #define ETH_MDIO_PIN 18
+// #define ETH_NRST_PIN 5
+
+// #include "WiFi.h"
+// #include <ETH.h>
+// #include <ArduinoOTA.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "freertos/semphr.h"  // For Semaphore
+#include "freertos/queue.h"  // For Queue
+
+#include <unordered_map>
+#include <memory>
+#include <map>
+
+
+const char *tag = "Main";
+
+// Instantiate Logger and TaskManager
+Logger logger;
+TaskManager taskManager;
+
+// Free function for a task
+void FFunctionTask(void* pvParameters) {
+    TaskStateChange stateChange;
+    stateChange.taskName = "FFunctionTask";
+
+    while (true) {
+        logger.log(ESP_LOG_INFO, tag, "Running FFunctionTask");
+
+        // Notify TaskManager that FFunctionTask is entering the blocked state
+        stateChange.newState = eBlocked; // Corrected state enum
+        taskManager.notifyTaskStateChange(stateChange);
+
+        vTaskDelay(pdMS_TO_TICKS(10000)); // Delay for 10 seconds
+
+        // Notify TaskManager that FFunctionTask is running again
+        stateChange.newState = eRunning; // Corrected state enum
+        taskManager.notifyTaskStateChange(stateChange);
+    }
+}
+
+
+
+
+// Dummy class to test member function task
+// class DummyClass {
+// public:
+//     void MemberFunctionTask() {
+//         while (true) {
+//             Serial.println("Running MemberFunctionTask");
+//             vTaskDelay(pdMS_TO_TICKS(3000)); // Delay for 3 seconds
+//         }
+//     }
+// };
+
+void setup() {
+    Serial.begin(115200); // Initialize serial communication at 115200 bits per second
+    delay(100);          // Wait for 1 second (1000 milliseconds)
+
+    logger.init(512);  // Initialize Logger with buffer size
+    logger.enableLogging(true);
+    logger.setLogLevel(ESP_LOG_DEBUG);
+
+    // Start the debug task
+    taskManager.startTask(&TaskManager::debugTask, "DebugTask", 8096, 5, "DBG");
+
+    // Retrieve and store the debug task handle
+    taskManager.debugTaskHandle = taskManager.getTaskHandleByName("DebugTask");
+
+    taskManager.startTask(FFunctionTask, "FFunctionTask", 8096, 3, "FFT");
+    // taskManager.startTaskWithoutParam(FFunctionTask, "FFunctionTask", 8096, 3, "FFT");
+
+
+    // Start a free function task
+    // taskManager.startTask(FFunctionTask, "FFunctionTask", 8096, 3, "FFT");
+    // taskManager.startTask(FFunctionTask, "FFunctionTask", 8096, NULL, 1, "FFT");
+
+    // Create an instance of DummyClass to use its member function for a task
+    // DummyClass dummyInstance;
+    // taskManager.startTask(&DummyClass::MemberFunctionTask, &dummyInstance, "MemberFunctionTask", 2048, 1, "MFT");
+    // bool startTask(void (TaskManager::*memberFunction)(void), const std::string& taskName, uint16_t stackSize, UBaseType_t priority, const std::string& abbreviatedName);
+
+}
+
+void loop() {
+    Serial.println("Main loop running");
+    vTaskDelay(pdMS_TO_TICKS(20000)); // Main loop delay
+}
+
+
+/* 
+// #include "esp32ModbusRTU.h"
+// #include "ModbusDevice.h"
+// Define the structure for shared sensor readings
+struct SharedSensorReadings {
+    // Define fields for sensor readings
+    float temperature;
+    float resistance;
+    bool isTemperatureValid;
+    bool isResistanceValid;
+    int error;
+    // ... other fields as needed ...
+};
+
+
+// Global variables
+#define SENSOR_ADDRESS 0x01
+MB8ART* sensorInstance;
+// MB8ART* sensorInstance = nullptr;
+esp32ModbusRTU modbusMaster(&Serial1);  // Make this a global or accessible variable
+// esp32ModbusRTU modbusMaster;
+
+const char *tag = "Main";
+
+// Instantiate Logger and TaskManager
+Logger logger;
+TaskManager taskManager;
+SemaphoreHandle_t ethSemaphore;
+static bool eth_connected = false;
+
+extern std::unordered_map<uint8_t, ModbusDevice*> globalDeviceMap;
+// std::unordered_map<uint8_t, ModbusDevice*> globalDeviceMap; // raw pointer
+
+// #define SENSOR_ADDRESS 0x01
+// MB8ART* sensorInstance = nullptr;
+
+
+// Declare a global instance of the struct
+SharedSensorReadings sharedSensorReadings;
+
+// #define DE_PIN 2  // Driver Enable for RS-485
+#define RX_PIN 36  // This is just an example, you should replace with your actual RX pin
+#define TX_PIN 4 // This is just an example, you should replace with your actual TX pin
+
+// SemaphoreHandle_t deviceMapMutex = xSemaphoreCreateMutex();  // Mutex for globalDeviceMap
+SemaphoreHandle_t sharedDataMutex;
+SemaphoreHandle_t sensorInstanceMutex;
+
+
+// Function declarations
+bool setupLogger();
+void initializeOTA();
+void OTAUpdateTask(void *pvParameters);
+void SensorReadTask(void* pvParameters);
+void DataProcessTask(void* pvParameters);
+
+// Create the queue
+QueueHandle_t sensorQueue = xQueueCreate(10, sizeof(SensorReading) * DEFAULT_NUMBER_OF_SENSORS);
+
+
+
+bool setupLogger() {
+    logger.init(512);  // Initialize Logger with buffer size
+    logger.enableLogging(true);
+    logger.setLogLevel(ESP_LOG_DEBUG);
+    // logger.setLogLevel(ESP_LOG_INFO);
+    return true;
+}
+
+void WiFiEvent(WiFiEvent_t event) {
+    switch (event) {
+        case ARDUINO_EVENT_ETH_START:
+            logger.log(ESP_LOG_INFO, tag, "ETH Started");
+            // Set eth hostname here
+            ETH.setHostname("esp32-ethernet");
+            break;
+        case ARDUINO_EVENT_ETH_CONNECTED:
+            logger.log(ESP_LOG_INFO, tag, "ETH Connected");
+            break;
+        case ARDUINO_EVENT_ETH_GOT_IP:
+            logger.log(ESP_LOG_INFO, tag,"ETH MAC: %s, IPv4: %s%s, %dMbps",
+                ETH.macAddress().c_str(),
+                ETH.localIP().toString().c_str(),
+                ETH.fullDuplex() ? ", FULL_DUPLEX" : "",
+                ETH.linkSpeed());
+            eth_connected = true;
+            xSemaphoreGive(ethSemaphore); // Give the semaphore when Ethernet is connected
+            break;
+        case ARDUINO_EVENT_ETH_DISCONNECTED:
+            logger.log(ESP_LOG_INFO, tag, "ETH Disconnected");
+            eth_connected = false;
+            break;
+        case ARDUINO_EVENT_ETH_STOP:
+            logger.log(ESP_LOG_INFO, tag, "ETH Stopped");
+            eth_connected = false;
+            break;
+        default:
+            break;
+    }
+}
+
+bool setup485() {
+    Serial1.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN); // Init Serial2 with custom RX and TX pins
+    int attempts = 0;
+    while (!Serial1 && attempts++ < 200) {  
+        delay(10);
+    }
+    if (!Serial1) {
+        return false; 
+    }
+    delay(500);
+    return true;
+}
+
+void initializeOTA() {
+    ArduinoOTA
+        .onStart([]() {
+            String type;
+            if (ArduinoOTA.getCommand() == U_FLASH)
+                type = "sketch";
+            else // U_SPIFFS
+                type = "filesystem";
+            
+            // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+            // DEBUG_PRINTLN_MAIN("Start updating " + type);
+        })
+        .onEnd([]() {
+            DEBUG_PRINTLN_MAIN("\nEnd");
+        })
+        .onProgress([](unsigned int progress, unsigned int total) {
+            DEBUG_PRINT_MAIN("Progress: %u%%\r", (progress / (total / 100)));
+        })
+        .onError([](ota_error_t error) {
+            DEBUG_PRINT_MAIN("Error[%u]: ", error);
+            if (error == OTA_AUTH_ERROR) DEBUG_PRINTLN_MAIN("Auth Failed");
+            else if (error == OTA_BEGIN_ERROR) DEBUG_PRINTLN_MAIN("Begin Failed");
+            else if (error == OTA_CONNECT_ERROR) DEBUG_PRINTLN_MAIN("Connect Failed");
+            else if (error == OTA_RECEIVE_ERROR) DEBUG_PRINTLN_MAIN("Receive Failed");
+            else if (error == OTA_END_ERROR) DEBUG_PRINTLN_MAIN("End Failed");
+        });
+
+    ArduinoOTA.begin();
+}
+
+// Define the tasks
+void OTAUpdateTask(void *pvParameters) {
+  for (;;) { // Task loop
+    if (eth_connected) {
+      ArduinoOTA.handle();
+    }
+    vTaskDelay(pdMS_TO_TICKS(5000)); // Delay for a second
+  }
+}
+
+void TempReqTask(void* pvParameters) {
+    getLogger().log(ESP_LOG_INFO, "oida", "am i here 12?");
+
+    MB8ART* sensorInstance = static_cast<MB8ART*>(pvParameters);
+    
+    if (sensorInstance == nullptr) {
+        getLogger().log(ESP_LOG_ERROR, tag, "Invalid sensorInstance pointer.");
+        vTaskDelete(NULL);
+    }
+
+    TickType_t xTicksToWait = pdMS_TO_TICKS(2000);  // 2000 ms timeout
+
+    while (1) {
+        if (xSemaphoreTake(sensorInstanceMutex, portMAX_DELAY)) {
+            // Ensure that the event group handle is valid
+            if (sensorInstance->getEventGroup() == NULL) {
+                getLogger().log(ESP_LOG_ERROR, tag, "Invalid Event Group Handle.");
+                xSemaphoreGive(sensorInstanceMutex);
+                vTaskDelete(NULL);
+            }
+
+            EventBits_t uxBits = xEventGroupWaitBits(sensorInstance->getEventGroup(),
+                                                    TIMER_TRIGGER_BIT,
+                                                    pdTRUE, 
+                                                    pdFALSE, 
+                                                    xTicksToWait);
+
+            xSemaphoreGive(sensorInstanceMutex); // Release the mutex
+
+            if ((uxBits & TIMER_TRIGGER_BIT) != 0) {
+                // The timer bit was set, request temperature data.
+                // sensorInstance->reqTemperatures();
+            } else {
+                // The timeout occurred without the bit being set.
+                // getLogger().log(ESP_LOG_INFO, tag, "TempReqTask: Timer trigger timeout.");
+            }
+        }
+    }
+}
+
+// void TempReqTask(void* pvParameters) {
+//     getLogger().log(ESP_LOG_INFO, "oida", "am i here 12?");
+
+//     MB8ART* sensorInstance = static_cast<MB8ART*>(pvParameters);
+//     if (sensorInstance == nullptr) {
+//         getLogger().log(ESP_LOG_ERROR, tag, "Invalid sensorInstance pointer.");
+//         vTaskDelete(NULL);
+//     }
+
+//     while (1) {
+//         // Minimal operation
+//         vTaskDelay(pdMS_TO_TICKS(2000));
+//     }
+// }
+
+
+
+void SensorReadTask(void* pvParameters) {
+    for (;;) {
+        // Try to take the mutex before accessing sensorInstance
+        if (xSemaphoreTake(sensorInstanceMutex, portMAX_DELAY)) {
+            // Read sensor data
+            SensorReading readings[DEFAULT_NUMBER_OF_SENSORS];
+            sensorInstance->getAllSensorReadings(readings);
+
+            // Release the mutex after accessing sensorInstance
+            xSemaphoreGive(sensorInstanceMutex);
+
+            // Send data to the processing task
+            xQueueSend(sensorQueue, readings, portMAX_DELAY);
+        }
+
+        // Wait for the next read cycle
+        vTaskDelay(pdMS_TO_TICKS(100000)); // Example: 100-second delay
+    }
+}
+
+void DataProcessTask(void* pvParameters) {
+    SensorReading readings[DEFAULT_NUMBER_OF_SENSORS];
+    for (;;) {
+        // Receive data from the sensor read task
+        // xQueueReceive(sensorQueue, readings, portMAX_DELAY);
+
+        // Process the data
+        // ...
+
+        // Notify the UI update task or send processed data via a queue
+        // xTaskNotify(uiUpdateTaskHandle, 0, eNoAction); // Example of notification
+    }
+}
+
+// void onDataReceived(const MB8ART::SensorReading& data) {
+//     // Ensure thread safety, e.g., using a mutex
+//     // xSemaphoreTake(sensorReadingsMutex, portMAX_DELAY); // Assuming you have a mutex named sensorReadingsMutex
+
+//     sharedSensorReadings.temperature = data.burner_output_temperature;
+//     sharedSensorReadings.resistance = data.burner_output_resistance;
+//     sharedSensorReadings.isTemperatureValid = data.isBurnerOutputTemperatureValid;
+//     sharedSensorReadings.isResistanceValid = data.isBurnerOutputResistanceValid;
+//     sharedSensorReadings.error = data.burner_output_error;
+//     // ... similar mappings for other fields ...
+
+//     // xSemaphoreGive(sensorReadingsMutex);
+// }
+
+void setup() {
+    Serial.begin(115200);
+
+    if (!setupLogger()) {
+        Serial.println("Failed to setup Logger");
+    }
+    delay(500);
+    Serial.print("configMAX_TASK_NAME_LEN");
+    Serial.println(configMAX_TASK_NAME_LEN);
+
+    WiFi.onEvent(WiFiEvent);
+    ethSemaphore = xSemaphoreCreateMutex();  // Create the semaphore
+    ETH.begin(ETH_ADDR, ETH_POWER_PIN, ETH_MDC_PIN, ETH_MDIO_PIN, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
+
+    initializeOTA();
+
+    // taskManager.startTask(OTAUpdateTask, "OTAUpdateTask", 4096, 4, "OTA");
+    taskManager.startTask(&TaskManager::debugTask, "DebugTask", 8096, 5, "DBG");
+
+    sensorInstanceMutex = xSemaphoreCreateMutex();
+    if (sensorInstanceMutex == NULL) {
+        // Handle the case where mutex creation failed
+        getLogger().log(ESP_LOG_ERROR, tag, "Failed to create sensorInstanceMutex.");
+    }
+
+
+    if (!setup485()) {
+        vTaskDelete(NULL);
+    }
+
+    // Before initializing sensorInstance
+    if (xSemaphoreTake(sensorInstanceMutex, portMAX_DELAY)) {
+        sensorInstance = new(std::nothrow) MB8ART(SENSOR_ADDRESS, modbusMaster, "PTA8C04C");
+        if (!sensorInstance) {
+            getLogger().log(ESP_LOG_ERROR, tag, "Failed to allocate memory for sensorInstance.");
+            xSemaphoreGive(sensorInstanceMutex);
+            return;
+        } else {
+            getLogger().log(ESP_LOG_INFO, tag, "Device registration happens automatically");
+            
+            // Note: registerModbusDevice() is no longer needed - devices register themselves
+
+            // Check if sensorInstance is nullptr before starting the task
+            if (sensorInstance != nullptr) {
+                Serial.println("sensorInstance is valid before starting TempReqTask");
+
+                TaskParams* params = new(std::nothrow) TaskParams;
+                if (!params) {
+                    getLogger().log(ESP_LOG_ERROR, tag, "Failed to allocate TaskParams");
+                    delete sensorInstance;
+                    sensorInstance = nullptr;
+                    xSemaphoreGive(sensorInstanceMutex);
+                    return;
+                }
+                params->function = TempReqTask;
+                params->arg = sensorInstance;
+
+                // taskManager.startTask(TaskManager::generalTaskWrapper, "TempReqTask", 15000, params, 2, "Trq");
+            } else {
+                Serial.println("sensorInstance is NULL before starting TempReqTask");
+                // Handle the case where sensorInstance is NULL
+            }
+        }
+        xSemaphoreGive(sensorInstanceMutex); // Release the mutex
+    }
+
+
+    // ModbusDevice::printGlobalDeviceMap();
+    // sensorInstance->registerModbusResponseCallback(onDataReceived);
+
+    // Create the tasks
+    // taskManager.startTask(SensorReadTask, "SensorReadTask", 13000, 2, "SRe");
+    // taskManager.startTask(DataProcessTask, "DataProcessTask", 8096, 1, "SPr");
+    
+    // xTaskCreate(SensorReadTask, "SensorReadTask", 2048, NULL, 1, NULL);
+    // xTaskCreate(DataProcessTask, "DataProcessTask", 2048, NULL, 1, NULL);
+
+
+}
+
+void loop() {
+
+    // ModbusDevice::printGlobalDeviceMap();
+
+    // Ensure that the pointer is not null before dereferencing
+    if (sensorInstance != nullptr) {
+        getLogger().log(ESP_LOG_INFO, "oida", "am i here?");
+
+        // Get module settings using the getter
+        const ModuleSettings& settings = sensorInstance->getModuleSettings();
+        sensorInstance->printModuleSettings(settings); // Changed to a member function call
+        sensorInstance->reqTemperatures(DEFAULT_NUMBER_OF_SENSORS);
+
+        const SensorReading* readings = sensorInstance->getSensorReadings();
+        for (int i = 0; i < 7; i++) {
+            const SensorReading& currentReading = readings[i];
+            sensorInstance->printSensorReading(currentReading, i); // Changed to a member function call
+        }
+    } else {
+        getLogger().log(ESP_LOG_ERROR, tag, "Sensor instance is not initialized!");
+    }
+    
+    delay(15000);
+} */

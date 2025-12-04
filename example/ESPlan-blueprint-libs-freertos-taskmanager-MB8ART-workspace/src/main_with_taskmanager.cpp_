@@ -1,0 +1,87 @@
+#include <Arduino.h>
+#include <MB8ART.h>
+#include <esp32ModbusRTU.h>
+#include <Logger.h>
+
+// Create global instances
+Logger logger;
+esp32ModbusRTU modbusMaster(&Serial2, 16);  // GPIO16 for DE/RE control
+MB8ART* tempModule = nullptr;
+
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+    
+    Serial.println("MB8ART MutexGuard Test Starting...");
+    
+    // Initialize logger
+    logger.init(512);
+    logger.enableLogging(true);
+    logger.setLogLevel(ESP_LOG_DEBUG);
+    
+    // Initialize Serial2 for RS485
+    Serial2.begin(9600, SERIAL_8N1, 26, 27);  // RX=26, TX=27
+    modbusMaster.begin();
+    
+    // Create MB8ART instance
+    tempModule = new MB8ART(0x01, modbusMaster, "TempModule1");
+    
+    // Initialize MB8ART module
+    Serial.println("Initializing MB8ART module...");
+    tempModule->initialize();
+    
+    // Wait for initialization
+    if (tempModule->waitForInitializationComplete(5000)) {
+        Serial.println("MB8ART initialized successfully");
+        
+        // Configure channels (example: all as K-type thermocouples)
+        tempModule->configureAllChannels(
+            mb8art::ChannelMode::THERMOCOUPLE,
+            static_cast<uint16_t>(mb8art::ThermocoupleType::TYPE_K)
+        );
+        
+        Serial.println("Channels configured");
+    } else {
+        Serial.println("MB8ART initialization failed!");
+    }
+}
+
+void loop() {
+    if (tempModule && tempModule->isInitialized()) {
+        // Request temperature data
+        if (tempModule->requestData()) {
+            Serial.println("Data requested");
+            
+            // Wait for data
+            if (tempModule->waitForData()) {
+                // Process the data
+                tempModule->processData();
+                
+                Serial.println("\n--- Temperature Readings ---");
+                // Read temperatures
+                for (int i = 0; i < 8; i++) {
+                    float temp = tempModule->getSensorTemperature(i);
+                    if (tempModule->getSensorConnectionStatus(i)) {
+                        Serial.printf("Channel %d: %.2f°C\n", i, temp);
+                    } else {
+                        Serial.printf("Channel %d: Not connected\n", i);
+                    }
+                }
+                
+                // Test getData method which uses MutexGuard
+                IDeviceInstance::DataResult result = tempModule->getData(IDeviceInstance::DeviceDataType::TEMPERATURE);
+                if (result.success) {
+                    Serial.println("\ngetData() test passed - MutexGuard working correctly");
+                } else {
+                    Serial.println("\ngetData() test failed");
+                }
+            } else {
+                Serial.println("Failed to receive data");
+            }
+        } else {
+            Serial.println("Failed to request data");
+        }
+    }
+    
+    delay(5000);  // Wait 5 seconds before next reading
+}

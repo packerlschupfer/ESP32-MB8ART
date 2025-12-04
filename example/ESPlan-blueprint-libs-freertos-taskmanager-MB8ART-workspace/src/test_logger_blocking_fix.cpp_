@@ -1,0 +1,67 @@
+/**
+ * Test program to demonstrate the Logger blocking fix
+ * 
+ * Problem: Logger::init() was blocking for 10-12 seconds when Serial wasn't ready
+ * Solution: Initialize Logger with NullBackend, then switch to ConsoleBackend after Serial is ready
+ */
+
+#include <Arduino.h>
+#include <MB8ARTSharedResources.h>
+
+void setup() {
+    unsigned long startTime = millis();
+    
+    // Track when we start Serial initialization
+    unsigned long beforeSerial = millis();
+    Serial.begin(115200);
+    
+    // Wait for Serial to be ready (with timeout)
+    unsigned long serialTimeout = 5000; // 5 second timeout
+    while (!Serial && (millis() - beforeSerial < serialTimeout)) { 
+        delay(10); 
+    }
+    
+    unsigned long afterSerial = millis();
+    
+    // Add a small delay to ensure Serial is fully ready
+    delay(100);
+    
+    Serial.println("\n\n=== Logger Blocking Fix Test ===");
+    Serial.printf("Serial initialization took: %lu ms\n", afterSerial - beforeSerial);
+    
+    // The MB8ARTSharedResources constructor has already run at this point
+    // Logger is initialized with NullBackend, so no blocking occurred
+    Serial.printf("Time since program start: %lu ms\n", millis() - startTime);
+    
+    // Now switch Logger to use ConsoleBackend for Serial output
+    Serial.println("\nSwitching Logger backend to ConsoleBackend...");
+    unsigned long beforeLoggerInit = millis();
+    MB8ARTSharedResources::initializeLogger();
+    unsigned long afterLoggerInit = millis();
+    
+    Serial.printf("Logger backend switch took: %lu ms\n", afterLoggerInit - beforeLoggerInit);
+    Serial.printf("Total time since start: %lu ms\n", millis() - startTime);
+    
+    // Test that logger now works with Serial output
+    Serial.println("\nTesting logger output:");
+    MB8ART_SRP_LOGGER.log(ESP_LOG_INFO, "TEST", "This message should appear on Serial");
+    MB8ART_SRP_LOGGER.log(ESP_LOG_DEBUG, "TEST", "Debug message test");
+    MB8ART_SRP_LOGGER.log(ESP_LOG_ERROR, "TEST", "Error message test");
+    
+    Serial.println("\n=== Test Complete ===");
+    Serial.println("Expected results:");
+    Serial.println("- No 10-12 second blocking delay");
+    Serial.println("- Logger backend switch should be < 100ms");
+    Serial.println("- Logger messages appear on Serial after backend switch");
+}
+
+void loop() {
+    static unsigned long lastMsg = 0;
+    
+    if (millis() - lastMsg > 5000) {  // Every 5 seconds
+        lastMsg = millis();
+        MB8ART_SRP_LOGGER.log(ESP_LOG_INFO, "LOOP", "Heartbeat at %lu ms", millis());
+    }
+    
+    delay(100);
+}
