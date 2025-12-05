@@ -32,15 +32,6 @@ bool MB8ART::probeDevice() {
     }
 }
 
-// SimpleModbusDevice interface implementation
-// readChannelData was used by SimpleModbusDevice - no longer needed with QueuedModbusDevice
-bool MB8ART::readChannelData() {
-    // With QueuedModbusDevice, data is handled asynchronously through onAsyncResponse
-    // This method is kept for backward compatibility but doesn't do anything
-    LOG_MB8ART_WARN_NL("readChannelData() called - this method is deprecated with QueuedModbusDevice");
-    return true;
-}
-
 IDeviceInstance::DeviceResult<void> MB8ART::waitForInitializationComplete(TickType_t timeout) {
     if (!xInitEventGroup) {
         LOG_MB8ART_ERROR_NL("Initialization event group not created");

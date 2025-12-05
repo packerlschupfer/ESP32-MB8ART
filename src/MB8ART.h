@@ -313,7 +313,6 @@ inline const char* currentRangeToString(CurrentRange range) {
 class MB8ART : public QueuedModbusDevice, public IDeviceInstance {
 public:
     using SensorReading = mb8art::SensorReading;
-    using TemperatureCallback = std::function<void(const SensorReading readings[], size_t size)>;
 
     // Inter-task communication event bits (for main.cpp tasks)
     enum TaskEventBits {
@@ -377,11 +376,10 @@ public:
      * @endcode
      */
     void setHardwareConfig(const mb8art::SensorHardwareConfig* config);
-    
-    // MB8ART configuration methods (no longer overrides from SimpleModbusDevice)
+
+    // MB8ART configuration methods
     bool configure();
     float getScaleFactor(size_t channel = 0) const;
-    bool readChannelData();
     
     // QueuedModbusDevice overrides
     void onAsyncResponse(uint8_t functionCode, uint16_t address,
@@ -508,7 +506,6 @@ public:
 
     // Callback registration
     void registerModbusResponseCallback(std::function<void(uint8_t functionCode, const uint8_t* data, uint16_t length)> callback);
-    void registerTemperatureCallback(TemperatureCallback callback);
 
     // Static utilities
     static BaudRate getBaudRateEnum(uint8_t rawValue);
@@ -724,7 +721,6 @@ private:
     // Callback storage
     TickType_t lastReportReceivedTime;
     TimerHandle_t missedReportTimer;
-    TemperatureCallback temperatureCallback;
     std::function<void(uint8_t functionCode, const uint8_t* data, uint16_t length)> modbusResponseCallback;
 
     // Expected update interval in milliseconds

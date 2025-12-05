@@ -25,10 +25,6 @@ bool MB8ART::requestTemperatures() {
                           currentRange == mb8art::MeasurementRange::HIGH_RES).isOk();
 }
 
-void MB8ART::registerTemperatureCallback(TemperatureCallback callback) {
-    temperatureCallback = callback;
-}
-
 int16_t MB8ART::convertRawToTemperature(uint16_t rawData, bool highResolution) {
     // MB8ART returns temperature data:
     // LOW_RES: Raw value 244 = 24.4°C (already in tenths - perfect!)
