@@ -170,8 +170,9 @@ void MB8ART::updateSensorReading(uint8_t channel, float value,
         sensorReadings[channel].Error = false;
 
         // Update bound pointers (unified mapping architecture)
+        // Convert float to int16_t tenths of degrees (Temperature_t)
         if (sensorBindings[channel].temperaturePtr != nullptr) {
-            *sensorBindings[channel].temperaturePtr = value;
+            *sensorBindings[channel].temperaturePtr = static_cast<int16_t>(value * 10.0f);
         }
         if (sensorBindings[channel].validityPtr != nullptr) {
             *sensorBindings[channel].validityPtr = true;

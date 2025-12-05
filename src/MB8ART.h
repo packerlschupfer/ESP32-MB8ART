@@ -191,7 +191,7 @@ struct SensorHardwareConfig {
  * temperature and validity variables. It's initialized once at startup.
  */
 struct SensorBinding {
-    float* temperaturePtr;     // Pointer to temperature value in application
+    int16_t* temperaturePtr;   // Pointer to temperature in tenths of degrees (Temperature_t)
     bool* validityPtr;         // Pointer to validity flag in application
 };
 
