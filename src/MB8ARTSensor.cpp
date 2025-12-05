@@ -29,19 +29,26 @@ void MB8ART::registerTemperatureCallback(TemperatureCallback callback) {
     temperatureCallback = callback;
 }
 
-float MB8ART::convertRawToTemperature(uint16_t rawData, bool highResolution) {
+int16_t MB8ART::convertRawToTemperature(uint16_t rawData, bool highResolution) {
     // MB8ART returns temperature data:
-    // LOW_RES: Raw value 244 = 24.4°C (divide by 10)
-    // HIGH_RES: Raw value 2440 = 24.40°C (divide by 100)
+    // LOW_RES: Raw value 244 = 24.4°C (already in tenths - perfect!)
+    // HIGH_RES: Raw value 2440 = 24.40°C (hundredths - divide by 10 to get tenths)
     // Handle negative temperatures (two's complement)
     int16_t signedValue = static_cast<int16_t>(rawData);
-    float divisor = highResolution ? 100.0f : 10.0f;
-    return static_cast<float>(signedValue) / divisor;
+
+    if (highResolution) {
+        // Convert hundredths to tenths: 2440 → 244
+        return signedValue / 10;
+    } else {
+        // Already in tenths - direct use!
+        return signedValue;
+    }
 }
 
-float MB8ART::applyTemperatureCorrection(float temperature) {
+int16_t MB8ART::applyTemperatureCorrection(int16_t temperature) {
     // Simple offset correction, can be expanded based on calibration needs
-    static constexpr float TEMPERATURE_OFFSET = 0.0f;
+    // Offset in tenths of degrees (e.g., 5 = 0.5°C offset)
+    static constexpr int16_t TEMPERATURE_OFFSET = 0;
     return temperature + TEMPERATURE_OFFSET;
 }
 
@@ -124,9 +131,9 @@ void MB8ART::processTemperatureData(const uint8_t* data, size_t length,
 
 
 
-float MB8ART::processChannelData(uint8_t channel, uint16_t rawData) {
+int16_t MB8ART::processChannelData(uint8_t channel, uint16_t rawData) {
     mb8art::ChannelMode mode = static_cast<mb8art::ChannelMode>(channelConfigs[channel].mode);
-    
+
     switch (mode) {
         case mb8art::ChannelMode::PT_INPUT: {
             auto type = static_cast<mb8art::PTType>(channelConfigs[channel].subType);
@@ -145,24 +152,25 @@ float MB8ART::processChannelData(uint8_t channel, uint16_t rawData) {
             return processCurrentData(rawData, type);
         }
         default:
-            return 0.0f;
+            return 0;
     }
 }
 
 
 
 
-void MB8ART::updateSensorReading(uint8_t channel, float value,
+void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
                                EventBits_t& updateBitsToSet,
                                EventBits_t& errorBitsToSet,
                                EventBits_t& errorBitsToClear,
                                char* statusBuffer,
                                size_t bufferSize,
                                int& offset) {
-    // Determine if we should use high resolution display (2 decimal places)
-    bool isHighRes = (currentRange == mb8art::MeasurementRange::HIGH_RES);
-    
-    if (isTemperatureInRange(value)) {
+    // Value is in tenths of degrees (Temperature_t format)
+    // For display: 244 = 24.4°C
+
+    // Check range in tenths: -2000 to 8500 (-200.0°C to 850.0°C)
+    if (value >= -2000 && value <= 8500) {
         sensorReadings[channel].temperature = value;
         sensorReadings[channel].isTemperatureValid = true;
         TickType_t now = xTaskGetTickCount();
@@ -170,9 +178,9 @@ void MB8ART::updateSensorReading(uint8_t channel, float value,
         sensorReadings[channel].Error = false;
 
         // Update bound pointers (unified mapping architecture)
-        // Convert float to int16_t tenths of degrees (Temperature_t)
+        // Direct assignment - both are int16_t tenths!
         if (sensorBindings[channel].temperaturePtr != nullptr) {
-            *sensorBindings[channel].temperaturePtr = static_cast<int16_t>(value * 10.0f);
+            *sensorBindings[channel].temperaturePtr = value;
         }
         if (sensorBindings[channel].validityPtr != nullptr) {
             *sensorBindings[channel].validityPtr = true;
@@ -185,10 +193,11 @@ void MB8ART::updateSensorReading(uint8_t channel, float value,
         errorBitsToClear |= (1 << channel);    // Direct bit manipulation
 
         // Safe buffer append with bounds checking
+        // Display in tenths: 244 → "24.4°C"
         int remaining = bufferSize - offset - 1;  // -1 for null terminator
         if (remaining > 0) {
-            int written = snprintf(statusBuffer + offset, remaining, 
-                                 "C%d: %.*f°C; ", channel, isHighRes ? 2 : 1, value);
+            int written = snprintf(statusBuffer + offset, remaining,
+                                 "C%d: %d.%d°C; ", channel, value / 10, abs(value % 10));
             if (written > 0 && written < remaining) {
                 offset += written;
             }
@@ -208,7 +217,7 @@ void MB8ART::updateSensorReading(uint8_t channel, float value,
         int remaining = bufferSize - offset - 1;
         if (remaining > 0) {
             int written = snprintf(statusBuffer + offset, remaining,
-                                 "C%d: OutOfRange(%.*f°C); ", channel, isHighRes ? 2 : 1, value);
+                                 "C%d: OutOfRange(%d.%d°C); ", channel, value / 10, abs(value % 10));
             if (written > 0 && written < remaining) {
                 offset += written;
             }
@@ -219,58 +228,48 @@ void MB8ART::updateSensorReading(uint8_t channel, float value,
 
 
 
-float MB8ART::processThermocoupleData(uint16_t rawData, mb8art::ThermocoupleType type) {
+int16_t MB8ART::processThermocoupleData(uint16_t rawData, mb8art::ThermocoupleType type) {
     // MB8ART returns temperature based on measurement range
     bool isHighRes = (currentRange == mb8art::MeasurementRange::HIGH_RES);
-    float temperature = convertRawToTemperature(rawData, isHighRes);
-    
-    LOG_MB8ART_DEBUG_NL("Processing thermocouple data: Raw=0x%04X (%d), Type=%s, Temp=%.1f°C",
+    int16_t temperature = convertRawToTemperature(rawData, isHighRes);
+
+    LOG_MB8ART_DEBUG_NL("Processing thermocouple data: Raw=0x%04X (%d), Type=%s, Temp=%d.%d°C",
                         rawData, rawData,
                         mb8art::thermocoupleTypeToString(type),
-                        temperature);
-                        
+                        temperature / 10, abs(temperature % 10));
+
     return temperature;
 }
 
 
 
 
-float MB8ART::processPTData(uint16_t rawData, mb8art::PTType type, mb8art::MeasurementRange range) {
-    // MB8ART returns temperature data:
-    // LOW_RES: Raw value 244 = 24.4°C (divide by 10)
-    // HIGH_RES: Raw value 2440 = 24.40°C (divide by 100)
-    float divisor = (range == mb8art::MeasurementRange::HIGH_RES) ? 100.0f : 10.0f;
-    float temperature = static_cast<float>(rawData) / divisor;
-    
-    char tempStr[16];
-    snprintf(tempStr, sizeof(tempStr), "%.1f", temperature);
-    
-    LOG_MB8ART_DEBUG_NL("Processing PT data: Raw=0x%04X (%d), Type=%s, Temp=%s°C",
+int16_t MB8ART::processPTData(uint16_t rawData, mb8art::PTType type, mb8art::MeasurementRange range) {
+    // MB8ART returns temperature data - convert to tenths of degrees
+    bool isHighRes = (range == mb8art::MeasurementRange::HIGH_RES);
+    int16_t temperature = convertRawToTemperature(rawData, isHighRes);
+
+    LOG_MB8ART_DEBUG_NL("Processing PT data: Raw=0x%04X (%d), Type=%s, Temp=%d.%d°C",
                         rawData, rawData,
                         mb8art::ptTypeToString(type),
-                        tempStr);
-                        
+                        temperature / 10, abs(temperature % 10));
+
     return temperature;
 }
 
 
 
 
-float MB8ART::processVoltageData(uint16_t rawData, mb8art::VoltageRange range) {
-    float voltage = 0.0f;
-    switch (range) {
-        case mb8art::VoltageRange::MV_15: voltage = rawData * 0.015f; break;
-        case mb8art::VoltageRange::MV_50: voltage = rawData * 0.05f; break;
-        case mb8art::VoltageRange::MV_100: voltage = rawData * 0.1f; break;
-        case mb8art::VoltageRange::V_1: voltage = rawData * 1.0f; break;
-    }
-    
-    LOG_MB8ART_DEBUG_NL("Processing voltage data: Raw=0x%04X, Range=%s, Value=%.3fV",
+int16_t MB8ART::processVoltageData(uint16_t rawData, mb8art::VoltageRange range) {
+    // For now, just return raw value since voltage/current mode isn't used
+    // TODO: Implement proper voltage scaling if needed
+    (void)range;  // Suppress unused warning
+
+    LOG_MB8ART_DEBUG_NL("Processing voltage data: Raw=0x%04X, Range=%s (raw value returned)",
                         rawData,
-                        mb8art::voltageRangeToString(range),
-                        voltage);
-    
-    return voltage;
+                        mb8art::voltageRangeToString(range));
+
+    return static_cast<int16_t>(rawData);
 }
 
 
@@ -301,17 +300,16 @@ void MB8ART::processChannelConfig(uint8_t channel, uint16_t rawConfig) {
 
 
 
-float MB8ART::processCurrentData(uint16_t rawData, mb8art::CurrentRange range) {
-    float current = (range == mb8art::CurrentRange::MA_4_TO_20) ? 
-                   4.0f + (rawData * 16.0f / 65535.0f) : 
-                   (rawData * 20.0f / 65535.0f);
-    
-    LOG_MB8ART_DEBUG_NL("Processing current data: Raw=0x%04X, Range=%s, Value=%.3fmA",
+int16_t MB8ART::processCurrentData(uint16_t rawData, mb8art::CurrentRange range) {
+    // For now, just return raw value since current mode isn't used
+    // TODO: Implement proper current scaling if needed
+    (void)range;  // Suppress unused warning
+
+    LOG_MB8ART_DEBUG_NL("Processing current data: Raw=0x%04X, Range=%s (raw value returned)",
                         rawData,
-                        mb8art::currentRangeToString(range),
-                        current);
-    
-    return current;
+                        mb8art::currentRangeToString(range));
+
+    return static_cast<int16_t>(rawData);
 }
 
 

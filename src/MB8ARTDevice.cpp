@@ -491,12 +491,13 @@ IDeviceInstance::DeviceResult<std::vector<float>> MB8ART::getData(IDeviceInstanc
             }
 
             // Build vector of temperature values
+            // Convert from int16_t (tenths) to float for IDeviceInstance interface
             std::vector<float> temperatures;
             temperatures.reserve(DEFAULT_NUMBER_OF_SENSORS);
-            
+
             for (int i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
                 if (channelConfigs[i].mode != static_cast<uint16_t>(mb8art::ChannelMode::DEACTIVATED)) {
-                    temperatures.push_back(sensorReadings[i].temperature);
+                    temperatures.push_back(sensorReadings[i].temperature / 10.0f);
                 }
             }
             

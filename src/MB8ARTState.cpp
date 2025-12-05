@@ -71,19 +71,15 @@ bool MB8ART::waitForInitStep(EventBits_t stepBit, const char* stepName, TickType
 }
 
 // Temperature sensor status methods
-float MB8ART::getSensorTemperature(uint8_t sensorIndex) const {
+int16_t MB8ART::getSensorTemperature(uint8_t sensorIndex) const {
     if (sensorIndex < DEFAULT_NUMBER_OF_SENSORS) {
-        float temp = sensorReadings[sensorIndex].temperature;
-        #ifdef MB8ART_DEBUG
-            bool isHighRes = (currentRange == mb8art::MeasurementRange::HIGH_RES);
-            LOG_MB8ART_DEBUG_NL("getSensorTemperature(%d) = %.*f°C", sensorIndex, isHighRes ? 2 : 1, temp);
-        #else
-            LOG_MB8ART_DEBUG_NL("getSensorTemperature(%d) = %.2f°C", sensorIndex, temp);
-        #endif
+        int16_t temp = sensorReadings[sensorIndex].temperature;  // int16_t tenths
+        LOG_MB8ART_DEBUG_NL("getSensorTemperature(%d) = %d.%d°C",
+                           sensorIndex, temp / 10, abs(temp % 10));
         return temp;
     }
     LOG_MB8ART_WARN_NL("getSensorTemperature: Invalid sensor index %d", sensorIndex);
-    return 0.0f;
+    return 0;
 }
 
 bool MB8ART::wasSensorLastCommandSuccessful(uint8_t sensorIndex) const {
@@ -175,9 +171,10 @@ const char* MB8ART::getSubTypeString(mb8art::ChannelMode mode, uint8_t subType) 
     }
 }
 
-bool MB8ART::isTemperatureInRange(float temperature) {
-    static constexpr float MIN_TEMPERATURE = -200.0f;
-    static constexpr float MAX_TEMPERATURE = 800.0f;
+bool MB8ART::isTemperatureInRange(int16_t temperature) {
+    // Temperature in tenths of degrees
+    static constexpr int16_t MIN_TEMPERATURE = -2000;  // -200.0°C
+    static constexpr int16_t MAX_TEMPERATURE = 8000;   // 800.0°C
     return temperature >= MIN_TEMPERATURE && temperature <= MAX_TEMPERATURE;
 }
 
@@ -230,21 +227,21 @@ const char* MB8ART::getTag() const {
 }
 
 // SimpleModbusDevice interface implementation
-float MB8ART::getTemperature(uint8_t channel) const {
+int16_t MB8ART::getTemperature(uint8_t channel) const {
     if (channel < DEFAULT_NUMBER_OF_SENSORS) {
-        return sensorReadings[channel].temperature;
+        return sensorReadings[channel].temperature;  // int16_t tenths
     }
-    return NAN;
+    return 0;  // Invalid temperature
 }
 
-std::vector<float> MB8ART::getTemperatures() const {
-    std::vector<float> temps;
+std::vector<int16_t> MB8ART::getTemperatures() const {
+    std::vector<int16_t> temps;
     temps.reserve(DEFAULT_NUMBER_OF_SENSORS);
-    
+
     for (const auto& reading : sensorReadings) {
-        temps.push_back(reading.temperature);
+        temps.push_back(reading.temperature);  // int16_t tenths
     }
-    
+
     return temps;
 }
 

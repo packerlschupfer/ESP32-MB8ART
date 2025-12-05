@@ -144,19 +144,19 @@ using DeviceResult = IDeviceInstance::DeviceResult<T>;
 
 // Struct for sensor readings - enhanced with tracking info and memory optimized
 struct SensorReading {
-    float temperature; 
+    int16_t temperature;  // Temperature in tenths of degrees (Temperature_t format: 244 = 24.4°C)
     TickType_t lastTemperatureUpdated;
-    
+
     // Bit field flags to save memory (4 bools -> 1 byte)
     uint8_t isTemperatureValid : 1;
     uint8_t Error : 1;
     uint8_t lastCommandSuccess : 1;  // Track if last command succeeded
     uint8_t isStateConfirmed : 1;    // Track if state has been confirmed
     uint8_t reserved : 4;            // Reserved for future use
-    
+
     // Constructor for initialization
-    SensorReading() : 
-        temperature(0.0f), 
+    SensorReading() :
+        temperature(0),
         lastTemperatureUpdated(0),
         isTemperatureValid(0),
         Error(0),
@@ -397,8 +397,8 @@ public:
     bool requestTemperatures();
     bool waitForData() override;
     IDeviceInstance::DeviceError waitForData(TickType_t xTicksToWait) override;
-    std::vector<float> getTemperatures() const;
-    float getTemperature(uint8_t channel) const;
+    std::vector<int16_t> getTemperatures() const;
+    int16_t getTemperature(uint8_t channel) const;
     
     // Event group access - returns the task communication event group
     EventGroupHandle_t getEventGroup() const noexcept override { return xTaskEventGroup; }
@@ -450,7 +450,7 @@ public:
     bool getSensorConnectionStatus(uint8_t channel) const;
     
     // Enhanced state tracking methods
-    float getSensorTemperature(uint8_t sensorIndex) const;
+    int16_t getSensorTemperature(uint8_t sensorIndex) const;
     bool wasSensorLastCommandSuccessful(uint8_t sensorIndex) const;
     TickType_t getSensorLastUpdateTime(uint8_t sensorIndex) const;
 
@@ -611,8 +611,8 @@ private:
                               EventBits_t& errorBitsToClear,
                               char* statusBuffer,
                               size_t bufferSize);
-    float processChannelData(uint8_t channel, uint16_t rawData);
-    void updateSensorReading(uint8_t channel, float value,
+    int16_t processChannelData(uint8_t channel, uint16_t rawData);
+    void updateSensorReading(uint8_t channel, int16_t value,
                            EventBits_t& updateBitsToSet,
                            EventBits_t& errorBitsToSet,
                            EventBits_t& errorBitsToClear,
@@ -629,7 +629,7 @@ private:
     bool isValueValid(float value) const;
 
     bool isSensorValid(uint8_t channel, float value) const;
-    bool isTemperatureInRange(float temperature);
+    bool isTemperatureInRange(int16_t temperature);
     void handleSensorError(int sensorIndex, char* statusBuffer, size_t bufferSize, int& offset);
     void updateEventBits(EventBits_t updateBitsToSet, 
                         EventBits_t errorBitsToSet,
@@ -676,12 +676,12 @@ private:
     }
 
     // Process different sensor types
-    float processThermocoupleData(uint16_t rawData, mb8art::ThermocoupleType type);
-    float processPTData(uint16_t rawData, mb8art::PTType type, mb8art::MeasurementRange range);
-    float processVoltageData(uint16_t rawData, mb8art::VoltageRange range);
-    float processCurrentData(uint16_t rawData, mb8art::CurrentRange range);
-    float convertRawToTemperature(uint16_t rawData, bool highResolution);
-    float applyTemperatureCorrection(float temperature);
+    int16_t processThermocoupleData(uint16_t rawData, mb8art::ThermocoupleType type);
+    int16_t processPTData(uint16_t rawData, mb8art::PTType type, mb8art::MeasurementRange range);
+    int16_t processVoltageData(uint16_t rawData, mb8art::VoltageRange range);   // Note: returns raw value for now
+    int16_t processCurrentData(uint16_t rawData, mb8art::CurrentRange range);   // Note: returns raw value for now
+    int16_t convertRawToTemperature(uint16_t rawData, bool highResolution);
+    int16_t applyTemperatureCorrection(int16_t temperature);
 
     // Member variables for state tracking
     ModuleSettings moduleSettings;
@@ -773,7 +773,7 @@ private:
     // Value range constants
     static constexpr uint16_t MAX_BAUD_RATE_VALUE = 7;                         // Maximum valid value for baud rate
     static constexpr uint16_t MAX_PARITY_VALUE = 2;                            // Maximum valid value for parity
-    static constexpr float TEMPERATURE_INVALID_THRESHOLD = 299.0f;             // Threshold for invalid temperature
+    static constexpr int16_t TEMPERATURE_INVALID_THRESHOLD = 2990;  // 299.0°C in tenths
     static constexpr size_t NUM_CONNECTION_REGISTERS = 8;                      // Number of connection status registers
     static constexpr size_t CONNECTION_STATUS_PACKET_LENGTH = 8;               // Expected length of connection status packet
 };
