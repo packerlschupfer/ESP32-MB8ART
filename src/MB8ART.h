@@ -5,6 +5,7 @@
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
 #include "freertos/timers.h"
+#include <array>
 #include <functional>
 #include "QueuedModbusDevice.h"
 #include "ModbusTypes.h"
@@ -169,6 +170,31 @@ struct ChannelConfig {
     uint16_t subType; // Subtype (e.g., J-Type, PT100, ±15mV, etc.)
 };
 
+/**
+ * @brief Hardware configuration for a single sensor channel (constexpr - lives in flash)
+ *
+ * This struct contains all the static hardware information about a sensor
+ * that never changes at runtime. It should be instantiated as constexpr
+ * arrays in flash memory to save RAM.
+ */
+struct SensorHardwareConfig {
+    uint8_t channelNumber;     // Physical channel number (0-7)
+    EventBits_t updateEventBit; // Event bit for successful update
+    EventBits_t errorEventBit;  // Event bit for error indication
+    bool isActive;              // Sensor channel is in use
+};
+
+/**
+ * @brief Runtime binding for a single sensor channel (lives in RAM)
+ *
+ * This struct contains only the runtime pointers to the application's
+ * temperature and validity variables. It's initialized once at startup.
+ */
+struct SensorBinding {
+    float* temperaturePtr;     // Pointer to temperature value in application
+    bool* validityPtr;         // Pointer to validity flag in application
+};
+
 // Utility functions to convert enum class values to underlying type
 inline EventBits_t toUnderlyingType(SensorUpdateBits bit) {
     return static_cast<EventBits_t>(bit);
@@ -186,6 +212,47 @@ inline SensorUpdateBits getSensorUpdateBit(size_t sensorIndex) {
 inline SensorErrorBits getSensorErrorBit(size_t sensorIndex) {
     return static_cast<SensorErrorBits>(1 << sensorIndex);
 }
+
+// Helper arrays for indexed access to event bits
+static constexpr EventBits_t SENSOR_UPDATE_BITS[8] = {
+    static_cast<EventBits_t>(SensorUpdateBits::SENSOR1_UPDATE_BIT),
+    static_cast<EventBits_t>(SensorUpdateBits::SENSOR2_UPDATE_BIT),
+    static_cast<EventBits_t>(SensorUpdateBits::SENSOR3_UPDATE_BIT),
+    static_cast<EventBits_t>(SensorUpdateBits::SENSOR4_UPDATE_BIT),
+    static_cast<EventBits_t>(SensorUpdateBits::SENSOR5_UPDATE_BIT),
+    static_cast<EventBits_t>(SensorUpdateBits::SENSOR6_UPDATE_BIT),
+    static_cast<EventBits_t>(SensorUpdateBits::SENSOR7_UPDATE_BIT),
+    static_cast<EventBits_t>(SensorUpdateBits::SENSOR8_UPDATE_BIT)
+};
+
+static constexpr EventBits_t SENSOR_ERROR_BITS[8] = {
+    static_cast<EventBits_t>(SensorErrorBits::SENSOR1_ERROR_BIT),
+    static_cast<EventBits_t>(SensorErrorBits::SENSOR2_ERROR_BIT),
+    static_cast<EventBits_t>(SensorErrorBits::SENSOR3_ERROR_BIT),
+    static_cast<EventBits_t>(SensorErrorBits::SENSOR4_ERROR_BIT),
+    static_cast<EventBits_t>(SensorErrorBits::SENSOR5_ERROR_BIT),
+    static_cast<EventBits_t>(SensorErrorBits::SENSOR6_ERROR_BIT),
+    static_cast<EventBits_t>(SensorErrorBits::SENSOR7_ERROR_BIT),
+    static_cast<EventBits_t>(SensorErrorBits::SENSOR8_ERROR_BIT)
+};
+
+/**
+ * @brief Default hardware configuration for all 8 sensor channels
+ *
+ * This constexpr array lives in flash memory and provides the default
+ * hardware configuration for a standard MB8ART sensor module. Applications
+ * can reference this or create their own constexpr config.
+ */
+static constexpr std::array<SensorHardwareConfig, 8> DEFAULT_SENSOR_CONFIG = {{
+    {0, SENSOR_UPDATE_BITS[0], SENSOR_ERROR_BITS[0], true},
+    {1, SENSOR_UPDATE_BITS[1], SENSOR_ERROR_BITS[1], true},
+    {2, SENSOR_UPDATE_BITS[2], SENSOR_ERROR_BITS[2], true},
+    {3, SENSOR_UPDATE_BITS[3], SENSOR_ERROR_BITS[3], true},
+    {4, SENSOR_UPDATE_BITS[4], SENSOR_ERROR_BITS[4], true},
+    {5, SENSOR_UPDATE_BITS[5], SENSOR_ERROR_BITS[5], true},
+    {6, SENSOR_UPDATE_BITS[6], SENSOR_ERROR_BITS[6], true},
+    {7, SENSOR_UPDATE_BITS[7], SENSOR_ERROR_BITS[7], true}
+}};
 
 // String conversion functions
 inline const char* channelModeToString(ChannelMode mode) {
@@ -275,6 +342,41 @@ public:
     bool isModuleResponsive() const;
     bool batchReadAllConfig();
     bool batchReadInitialConfig();
+
+    /**
+     * @brief Bind sensor data pointers (unified mapping API)
+     *
+     * This method accepts an array of pointers to application temperature and validity variables.
+     * When sensor readings are updated, the library will update these variables directly.
+     *
+     * @param bindings Array of 8 SensorBinding structs (temperaturePtr and validityPtr)
+     *
+     * Example usage:
+     * @code
+     * std::array<mb8art::SensorBinding, 8> bindings = {{
+     *     {&sensorData.boilerOutput, &sensorData.isBoilerOutputValid},
+     *     {&sensorData.boilerReturn, &sensorData.isBoilerReturnValid},
+     *     ...
+     * }};
+     * mb8art->bindSensorPointers(bindings);
+     * @endcode
+     */
+    void bindSensorPointers(const std::array<mb8art::SensorBinding, 8>& bindings);
+
+    /**
+     * @brief Set hardware configuration (unified mapping API)
+     *
+     * This method accepts a pointer to a constexpr hardware config array.
+     * The config defines the event bits and channel numbers.
+     *
+     * @param config Pointer to array of 8 SensorHardwareConfig structs
+     *
+     * Example usage:
+     * @code
+     * mb8art->setHardwareConfig(mb8art::DEFAULT_SENSOR_CONFIG.data());
+     * @endcode
+     */
+    void setHardwareConfig(const mb8art::SensorHardwareConfig* config);
     
     // MB8ART configuration methods (no longer overrides from SimpleModbusDevice)
     bool configure();
@@ -482,7 +584,11 @@ private:
     
     // Array of bit fields for sensor connection status (8 sensors = 1 byte)
     uint8_t sensorConnected;  // Each bit represents a sensor (0-7)
-    
+
+    // Unified mapping architecture
+    const mb8art::SensorHardwareConfig* hardwareConfig; // Pointer to constexpr hardware config (flash)
+    std::array<mb8art::SensorBinding, 8> sensorBindings; // Runtime sensor bindings (RAM)
+
     static TickType_t lastGlobalDataUpdate;
     uint8_t channelsConfiguredDuringInit;  // Bitmask to track configured channels during init
     IDeviceInstance::DeviceError lastError = IDeviceInstance::DeviceError::SUCCESS;  // Track last error for IDeviceInstance

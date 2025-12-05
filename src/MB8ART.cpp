@@ -38,6 +38,8 @@ MB8ART::MB8ART(uint8_t sensorAddress, const char* tag)
       tag(tag),
       statusFlags{0, 0, 0, 0},  // Initialize all flags to 0
       sensorConnected(0),        // All sensors initially disconnected
+      hardwareConfig(nullptr),   // Hardware config set via setHardwareConfig()
+      sensorBindings({}),        // Initialize all bindings to nullptr
       dataReceiverTask(nullptr) {
     
     // Pre-initialize MB8ARTSharedResources to ensure Logger is ready

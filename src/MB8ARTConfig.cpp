@@ -422,4 +422,37 @@ void MB8ART::setTag(const char* newTag) {
     tag = newTag;
 }
 
+// ========== Unified Mapping API ==========
+
+void MB8ART::bindSensorPointers(const std::array<mb8art::SensorBinding, 8>& bindings) {
+    LOG_MB8ART_DEBUG_NL("Binding sensor pointers (unified mapping API)");
+
+    // Copy the binding array
+    sensorBindings = bindings;
+
+    // Log which sensors have bindings
+    for (size_t i = 0; i < 8; i++) {
+        if (bindings[i].temperaturePtr != nullptr && bindings[i].validityPtr != nullptr) {
+            LOG_MB8ART_DEBUG_NL("Sensor %d bound to temp=0x%p, valid=0x%p",
+                               i, bindings[i].temperaturePtr, bindings[i].validityPtr);
+        } else {
+            LOG_MB8ART_DEBUG_NL("Sensor %d has incomplete binding (nullptr)", i);
+        }
+    }
+}
+
+void MB8ART::setHardwareConfig(const mb8art::SensorHardwareConfig* config) {
+    LOG_MB8ART_DEBUG_NL("Setting hardware configuration (unified mapping API)");
+
+    if (config == nullptr) {
+        LOG_MB8ART_ERROR_NL("Hardware config pointer is null!");
+        return;
+    }
+
+    // Store pointer to constexpr config array (lives in flash)
+    this->hardwareConfig = config;
+
+    LOG_MB8ART_DEBUG_NL("Hardware config set successfully (constexpr array in flash)");
+}
+
 

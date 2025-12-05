@@ -168,10 +168,18 @@ void MB8ART::updateSensorReading(uint8_t channel, float value,
         TickType_t now = xTaskGetTickCount();
         sensorReadings[channel].lastTemperatureUpdated = now;
         sensorReadings[channel].Error = false;
-        
+
+        // Update bound pointers (unified mapping architecture)
+        if (sensorBindings[channel].temperaturePtr != nullptr) {
+            *sensorBindings[channel].temperaturePtr = value;
+        }
+        if (sensorBindings[channel].validityPtr != nullptr) {
+            *sensorBindings[channel].validityPtr = true;
+        }
+
         // Update global timestamp for optimization
         lastAnyChannelUpdate = now;
-       
+
         updateBitsToSet |= (1 << channel);     // Direct bit manipulation
         errorBitsToClear |= (1 << channel);    // Direct bit manipulation
 
@@ -187,6 +195,12 @@ void MB8ART::updateSensorReading(uint8_t channel, float value,
     } else {
         sensorReadings[channel].isTemperatureValid = false;
         sensorReadings[channel].Error = true;
+
+        // Update bound pointers for error case
+        if (sensorBindings[channel].validityPtr != nullptr) {
+            *sensorBindings[channel].validityPtr = false;
+        }
+
         errorBitsToSet |= (1 << channel);
         
         // Safe buffer append
