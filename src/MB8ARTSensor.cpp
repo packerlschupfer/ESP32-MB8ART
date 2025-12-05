@@ -174,7 +174,10 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
         sensorReadings[channel].Error = false;
 
         // Update bound pointers (unified mapping architecture)
+<<<<<<< HEAD
         // Direct assignment - both are int16_t tenths!
+=======
+>>>>>>> 7b46226 (refactor: Implement unified hardware mapping architecture for sensors)
         if (sensorBindings[channel].temperaturePtr != nullptr) {
             *sensorBindings[channel].temperaturePtr = value;
         }

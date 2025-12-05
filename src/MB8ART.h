@@ -191,7 +191,11 @@ struct SensorHardwareConfig {
  * temperature and validity variables. It's initialized once at startup.
  */
 struct SensorBinding {
+<<<<<<< HEAD
     int16_t* temperaturePtr;   // Pointer to temperature in tenths of degrees (Temperature_t)
+=======
+    float* temperaturePtr;     // Pointer to temperature value in application
+>>>>>>> 7b46226 (refactor: Implement unified hardware mapping architecture for sensors)
     bool* validityPtr;         // Pointer to validity flag in application
 };
 
@@ -376,8 +380,13 @@ public:
      * @endcode
      */
     void setHardwareConfig(const mb8art::SensorHardwareConfig* config);
+<<<<<<< HEAD
 
     // MB8ART configuration methods
+=======
+    
+    // MB8ART configuration methods (no longer overrides from SimpleModbusDevice)
+>>>>>>> 7b46226 (refactor: Implement unified hardware mapping architecture for sensors)
     bool configure();
     float getScaleFactor(size_t channel = 0) const;
     
