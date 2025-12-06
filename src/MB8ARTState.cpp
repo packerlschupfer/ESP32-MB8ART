@@ -238,7 +238,9 @@ std::vector<int16_t> MB8ART::getTemperatures() const {
 }
 
 float MB8ART::getScaleFactor(size_t channel) const {
-    // We store temperatures as int32_t with 0.1°C resolution
-    // So scale factor is 0.1 to convert back to float
-    return 0.1f;
+    // Scale factor for converting raw int16_t to float temperature
+    // - LOW_RES: 0.1°C resolution (divide by 10)
+    // - HIGH_RES: 0.01°C resolution (divide by 100)
+    // Note: Prefer integer math where possible (rawTemp / 100, rawTemp % 100)
+    return (currentRange == mb8art::MeasurementRange::HIGH_RES) ? 0.01f : 0.1f;
 }

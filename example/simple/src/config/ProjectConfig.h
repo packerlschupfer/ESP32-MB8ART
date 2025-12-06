@@ -73,7 +73,7 @@
 #define MODBUS_RX_PIN 36      // Adjust for your hardware
 #define MODBUS_TX_PIN 4      // Adjust for your hardware
 #define MODBUS_BAUD_RATE 9600
-#define MB8ART_ADDRESS 0x01   // Default MB8ART address
+#define MB8ART_ADDRESS 0x03   // MB8ART address (boiler controller hardware)
 
 // MB8ART Temperature Module Settings
 #define MB8ART_NUM_CHANNELS 8

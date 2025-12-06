@@ -37,9 +37,13 @@ void MonitoringTask(void* pvParameters) {
         size_t minFreeHeap = ESP.getMinFreeHeap();
         size_t totalHeap = ESP.getHeapSize();
 
-        LOG_INFO(TAG, "Heap: %d / %d bytes (%.1f%% used)",
+        // Integer math: percentage with one decimal place (e.g., 45.3%)
+        // usedHeap * 1000 / totalHeap gives tenths of percent
+        uint32_t usedHeap = totalHeap - freeHeap;
+        uint32_t usedPercentTenths = totalHeap > 0 ? (usedHeap * 1000) / totalHeap : 0;
+        LOG_INFO(TAG, "Heap: %d / %d bytes (%d.%d%% used)",
                  freeHeap, totalHeap,
-                 100.0f * (1.0f - (float)freeHeap / (float)totalHeap));
+                 usedPercentTenths / 10, usedPercentTenths % 10);
         LOG_INFO(TAG, "Min free heap: %d bytes", minFreeHeap);
 
         // Heap fragmentation

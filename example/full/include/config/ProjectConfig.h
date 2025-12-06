@@ -46,7 +46,7 @@
 #endif
 
 #ifndef MB8ART_ADDRESS
-#define MB8ART_ADDRESS 0x01
+#define MB8ART_ADDRESS 0x03  // Boiler controller hardware
 #endif
 
 // =============================================================================
@@ -115,17 +115,17 @@
     #define STACK_SIZE_MONITORING_TASK      5120
     #define STACK_SIZE_TEMPERATURE_TASK     4096
     #define STACK_SIZE_OTA_TASK             4096
-    #define STACK_SIZE_LOOP_TASK            2048
+    #define STACK_SIZE_LOOP_TASK            4096
 #elif defined(LOG_MODE_DEBUG_SELECTIVE)
     #define STACK_SIZE_MONITORING_TASK      4096
     #define STACK_SIZE_TEMPERATURE_TASK     3584
     #define STACK_SIZE_OTA_TASK             3584
-    #define STACK_SIZE_LOOP_TASK            1536
+    #define STACK_SIZE_LOOP_TASK            4096
 #else  // LOG_MODE_RELEASE
     #define STACK_SIZE_MONITORING_TASK      3072
     #define STACK_SIZE_TEMPERATURE_TASK     3072
     #define STACK_SIZE_OTA_TASK             3072
-    #define STACK_SIZE_LOOP_TASK            1024
+    #define STACK_SIZE_LOOP_TASK            4096
 #endif
 
 // Task priorities (higher = more important)

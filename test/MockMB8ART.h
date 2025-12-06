@@ -60,6 +60,8 @@ public:
     void setMockChannelConfig(uint8_t channel, mb8art::ChannelMode mode, uint16_t subType) {
         if (channel < DEFAULT_NUMBER_OF_SENSORS) {
             mockChannelConfigs[channel] = {static_cast<uint16_t>(mode), subType};
+            // Also update parent's protected channelConfigs for updateActiveChannelMask()
+            channelConfigs[channel] = {static_cast<uint16_t>(mode), subType};
         }
     }
     

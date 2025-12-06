@@ -50,7 +50,7 @@ bool TemperatureTask::start() {
 void TemperatureTask::stop() {
     TaskHandle_t handle = taskManager.getTaskHandleByName(TASK_NAME);
     if (handle != nullptr) {
-        taskManager.stopTask(handle);
+        (void)taskManager.stopTask(handle);
         LOG_INFO(TASK_TAG, "Task stopped");
     }
 }
@@ -82,7 +82,7 @@ void TemperatureTask::taskFunction(void* pvParameters) {
     
     while (true) {
         // Feed watchdog using TaskManager
-        taskManager.feedWatchdog();
+        (void)taskManager.feedWatchdog();
         
         // Check if device is initialized first
         if (!mb8artDevice || !mb8artDevice->isInitialized()) {
@@ -121,7 +121,7 @@ void TemperatureTask::taskFunction(void* pvParameters) {
         }
         
         // Feed watchdog before delay
-        taskManager.feedWatchdog();
+        (void)taskManager.feedWatchdog();
         
         // Wait for next cycle
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(currentInterval));
@@ -147,7 +147,7 @@ bool TemperatureTask::readTemperatureData() {
     }
     
     // Feed watchdog before waiting for data
-    taskManager.feedWatchdog();
+    (void)taskManager.feedWatchdog();
     
     // Wait for data with timeout
     if (!mb8artDevice->waitForData()) {
@@ -156,12 +156,12 @@ bool TemperatureTask::readTemperatureData() {
     }
     
     // Feed watchdog before processing data
-    taskManager.feedWatchdog();
+    (void)taskManager.feedWatchdog();
     
     // Data is already processed by waitForData()
     
     // Feed watchdog after processing
-    taskManager.feedWatchdog();
+    (void)taskManager.feedWatchdog();
     
     #if defined(LOG_MODE_DEBUG_FULL) || defined(LOG_MODE_DEBUG_SELECTIVE)
         // Log temperature readings in debug modes
@@ -173,13 +173,18 @@ bool TemperatureTask::readTemperatureData() {
         
         // Check if HIGH_RES mode is enabled for proper decimal formatting
         bool isHighRes = (mb8artDevice->getCurrentRange() == mb8art::MeasurementRange::HIGH_RES);
-        const char* tempFormat = isHighRes ? "Ch%d:%.2f°C " : "Ch%d:%.1f°C ";
-        
+
         for (int i = 0; i < MB8ART_NUM_CHANNELS; i++) {
             if (mb8artDevice->wasSensorLastCommandSuccessful(i)) {
-                float temp = mb8artDevice->getSensorTemperature(i);
-                offset += snprintf(tempBuffer + offset, sizeof(tempBuffer) - offset, 
-                                 tempFormat, i + 1, temp);
+                int16_t rawTemp = mb8artDevice->getSensorTemperature(i);
+                // Format integer as decimal: HIGH_RES divides by 100, LOW_RES by 10
+                if (isHighRes) {
+                    offset += snprintf(tempBuffer + offset, sizeof(tempBuffer) - offset,
+                                     "Ch%d:%d.%02d°C ", i + 1, rawTemp / 100, abs(rawTemp % 100));
+                } else {
+                    offset += snprintf(tempBuffer + offset, sizeof(tempBuffer) - offset,
+                                     "Ch%d:%d.%d°C ", i + 1, rawTemp / 10, abs(rawTemp % 10));
+                }
             } else {
                 offset += snprintf(tempBuffer + offset, sizeof(tempBuffer) - offset, 
                                  "Ch%d:-- ", i + 1);
@@ -187,7 +192,7 @@ bool TemperatureTask::readTemperatureData() {
             
             // Feed watchdog periodically during logging
             if (i == 3) {
-                taskManager.feedWatchdog();
+                (void)taskManager.feedWatchdog();
             }
         }
         

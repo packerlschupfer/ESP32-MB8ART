@@ -52,7 +52,7 @@ bool MonitoringTask::start() {
 void MonitoringTask::stop() {
     TaskHandle_t handle = taskManager.getTaskHandleByName(TASK_NAME);
     if (handle != nullptr) {
-        taskManager.stopTask(handle);
+        (void)taskManager.stopTask(handle);
         LOG_INFO(TASK_TAG, "Task stopped");
     }
 }
@@ -76,7 +76,7 @@ void MonitoringTask::taskFunction(void* pvParameters) {
     // Task loop
     for (;;) {
         // Feed watchdog at the start of each iteration
-        taskManager.feedWatchdog();
+        (void)taskManager.feedWatchdog();
         
         cycleCount++;
         
@@ -86,29 +86,29 @@ void MonitoringTask::taskFunction(void* pvParameters) {
         logSystemHealth();
         
         // Feed watchdog after potentially long operation
-        taskManager.feedWatchdog();
-        
+        (void)taskManager.feedWatchdog();
+
         logNetworkStatus();
-        
+
         // Feed watchdog
-        taskManager.feedWatchdog();
-        
+        (void)taskManager.feedWatchdog();
+
         logModuleStatus();
-        
+
         // Feed watchdog
-        taskManager.feedWatchdog();
-        
+        (void)taskManager.feedWatchdog();
+
         logTemperatureStatistics();
-        
+
         // Feed watchdog
-        taskManager.feedWatchdog();
-        
+        (void)taskManager.feedWatchdog();
+
         logTaskStatus();
-        
+
         LOG_INFO(TASK_TAG, "=== End of Report ===\n");
-        
+
         // Before any long delays, feed watchdog again
-        taskManager.feedWatchdog();
+        (void)taskManager.feedWatchdog();
         
         // Handle delay with proper watchdog feeding
         const int totalDelayMs = MONITOR_INTERVAL_MS;
@@ -120,7 +120,7 @@ void MonitoringTask::taskFunction(void* pvParameters) {
         if (totalDelayMs <= maxDelayWithoutFeed) {
             // Short delay - can do it in one go
             vTaskDelay(pdMS_TO_TICKS(totalDelayMs));
-            taskManager.feedWatchdog();
+            (void)taskManager.feedWatchdog();
         } else {
             // Long delay - need to break it up and feed watchdog periodically
             int remainingMs = totalDelayMs;
@@ -141,7 +141,7 @@ void MonitoringTask::taskFunction(void* pvParameters) {
                 remainingMs -= delayMs;
                 
                 // Feed watchdog after each chunk
-                taskManager.feedWatchdog();
+                (void)taskManager.feedWatchdog();
             }
         }
     }
@@ -405,10 +405,11 @@ void MonitoringTask::logModuleStatus() {
     // Get device statistics
     auto stats = temperatureModule->getStatistics();
     LOG_INFO(TASK_TAG, "  Total Requests: %d", stats.totalRequests);
-    float successRate = stats.totalRequests > 0 ? 
-        (float)stats.successfulRequests / stats.totalRequests * 100.0f : 0.0f;
-    LOG_INFO(TASK_TAG, "  Successful: %d (%.1f%%)", 
-             stats.successfulRequests, successRate);
+    // Integer percentage: successRate = (successful * 1000) / total gives tenths of percent
+    uint32_t successRateTenths = stats.totalRequests > 0 ?
+        (stats.successfulRequests * 1000) / stats.totalRequests : 0;
+    LOG_INFO(TASK_TAG, "  Successful: %d (%d.%d%%)",
+             stats.successfulRequests, successRateTenths / 10, successRateTenths % 10);
     LOG_INFO(TASK_TAG, "  Failed: %d", stats.failedRequests);
     LOG_INFO(TASK_TAG, "  Timeouts: %d", stats.timeouts);
     LOG_INFO(TASK_TAG, "  CRC Errors: %d", stats.crcErrors);
@@ -439,27 +440,37 @@ void MonitoringTask::logTemperatureStatistics() {
         return;
     }
     
-    float minTemp = 999.0f;
-    float maxTemp = -999.0f;
-    float avgTemp = 0.0f;
+    int16_t minTemp = 32767;
+    int16_t maxTemp = -32768;
+    int32_t sumTemp = 0;
     int validChannels = 0;
-    
-    // Calculate statistics
+    bool isHighRes = (temperatureModule->getCurrentRange() == mb8art::MeasurementRange::HIGH_RES);
+
+    // Calculate statistics using raw integer values
     for (int i = 0; i < MB8ART_NUM_CHANNELS; i++) {
         if (temperatureModule->wasSensorLastCommandSuccessful(i)) {
-            float temp = temperatureModule->getSensorTemperature(i);
-            
+            int16_t temp = temperatureModule->getSensorTemperature(i);
+
             if (temp < minTemp) minTemp = temp;
             if (temp > maxTemp) maxTemp = temp;
-            avgTemp += temp;
+            sumTemp += temp;
             validChannels++;
         }
     }
-    
+
     if (validChannels > 0) {
-        avgTemp /= validChannels;
-        LOG_INFO(TASK_TAG, "  Min: %.1f°C, Max: %.1f°C, Avg: %.1f°C", 
-                 minTemp, maxTemp, avgTemp);
+        int16_t avgTemp = sumTemp / validChannels;
+        if (isHighRes) {
+            LOG_INFO(TASK_TAG, "  Min: %d.%02d°C, Max: %d.%02d°C, Avg: %d.%02d°C",
+                     minTemp / 100, abs(minTemp % 100),
+                     maxTemp / 100, abs(maxTemp % 100),
+                     avgTemp / 100, abs(avgTemp % 100));
+        } else {
+            LOG_INFO(TASK_TAG, "  Min: %d.%d°C, Max: %d.%d°C, Avg: %d.%d°C",
+                     minTemp / 10, abs(minTemp % 10),
+                     maxTemp / 10, abs(maxTemp % 10),
+                     avgTemp / 10, abs(avgTemp % 10));
+        }
         LOG_INFO(TASK_TAG, "  Valid Channels: %d/%d", validChannels, MB8ART_NUM_CHANNELS);
     } else {
         LOG_WARN(TASK_TAG, "  No valid temperature readings");

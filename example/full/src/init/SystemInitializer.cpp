@@ -57,19 +57,19 @@ SystemInitializer::~SystemInitializer() {
 }
 
 Result<void> SystemInitializer::initialize() {
+    // Stage 1: Logging - MUST BE FIRST before any LOG_* calls!
+    auto result = initializeLogging();
+    if (result.isError()) {
+        Serial.println("Logging initialization failed");
+        return Result<void>::error();
+    }
+    currentStage_ = InitStage::LOGGING;
+
     LOG_INFO(TAG, "");
     LOG_INFO(TAG, "========================================");
     LOG_INFO(TAG, "  %s v%s", PROJECT_NAME, FIRMWARE_VERSION);
     LOG_INFO(TAG, "========================================");
     LOG_INFO(TAG, "");
-
-    // Stage 1: Logging
-    auto result = initializeLogging();
-    if (result.isError()) {
-        LOG_ERROR(TAG, "Logging initialization failed");
-        return Result<void>::error();
-    }
-    currentStage_ = InitStage::LOGGING;
 
     // Stage 2: Hardware
     result = initializeHardware();

@@ -94,7 +94,7 @@ void PerformanceMonitorTask::taskFunction(void* pvParameters) {
     
     while (true) {
         // Feed watchdog
-        taskManager->feedWatchdog();
+        (void)taskManager->feedWatchdog();
         
         // Monitor a data request cycle
         monitorDataRequest();
@@ -117,7 +117,7 @@ void PerformanceMonitorTask::monitorDataRequest() {
     
     // Monitor data freshness check performance
     TickType_t freshnessStart = xTaskGetTickCount();
-    bool hasRecent = mb8artDevice->hasRecentSensorData(5000);
+    (void)mb8artDevice->hasRecentSensorData(5000);  // Result used only for timing
     TickType_t freshnessTime = xTaskGetTickCount() - freshnessStart;
     
     metrics.dataFreshnessChecks++;
@@ -129,7 +129,7 @@ void PerformanceMonitorTask::monitorDataRequest() {
     bool wasCached = (now - lastConnectionCheck) < pdMS_TO_TICKS(5000);
     
     TickType_t connStart = xTaskGetTickCount();
-    bool connSuccess = mb8artDevice->refreshConnectionStatus();
+    (void)mb8artDevice->refreshConnectionStatus();  // Result used only for timing
     TickType_t connTime = xTaskGetTickCount() - connStart;
     
     if (wasCached && connTime < pdMS_TO_TICKS(5)) {
@@ -171,10 +171,10 @@ void PerformanceMonitorTask::generateReport() {
     // Request statistics
     ESP_LOGI(TASK_TAG, "Temperature Requests:");
     ESP_LOGI(TASK_TAG, "  Total: %lu", metrics.totalRequests);
-    ESP_LOGI(TASK_TAG, "  Successful: %lu (%.1f%%)", 
-             metrics.successfulRequests,
-             metrics.totalRequests > 0 ? 
-                (100.0f * metrics.successfulRequests / metrics.totalRequests) : 0.0f);
+    uint32_t successRateTenths = metrics.totalRequests > 0 ?
+        (metrics.successfulRequests * 1000) / metrics.totalRequests : 0;
+    ESP_LOGI(TASK_TAG, "  Successful: %lu (%lu.%lu%%)",
+             metrics.successfulRequests, successRateTenths / 10, successRateTenths % 10);
     
     // Response time statistics
     if (metrics.successfulRequests > 0) {
@@ -191,18 +191,17 @@ void PerformanceMonitorTask::generateReport() {
     ESP_LOGI(TASK_TAG, "  Hits: %lu", metrics.cacheHits);
     ESP_LOGI(TASK_TAG, "  Misses: %lu", metrics.cacheMisses);
     if (totalCacheAccess > 0) {
-        ESP_LOGI(TASK_TAG, "  Hit Rate: %.1f%%", 
-                 100.0f * metrics.cacheHits / totalCacheAccess);
+        uint32_t hitRateTenths = (metrics.cacheHits * 1000) / totalCacheAccess;
+        ESP_LOGI(TASK_TAG, "  Hit Rate: %lu.%lu%%", hitRateTenths / 10, hitRateTenths % 10);
     }
     
     // Data freshness check performance
     if (metrics.dataFreshnessChecks > 0) {
         uint32_t avgFreshnessTime = metrics.totalFreshnessCheckTime / metrics.dataFreshnessChecks;
+        uint32_t avgFreshnessMs = avgFreshnessTime * portTICK_PERIOD_MS;
         ESP_LOGI(TASK_TAG, "Data Freshness Checks:");
         ESP_LOGI(TASK_TAG, "  Total: %lu", metrics.dataFreshnessChecks);
-        ESP_LOGI(TASK_TAG, "  Avg Time: %lu ticks (%.2f ms)", 
-                 avgFreshnessTime,
-                 (float)avgFreshnessTime * portTICK_PERIOD_MS);
+        ESP_LOGI(TASK_TAG, "  Avg Time: %lu ticks (%lu ms)", avgFreshnessTime, avgFreshnessMs);
     }
     
     // Memory usage

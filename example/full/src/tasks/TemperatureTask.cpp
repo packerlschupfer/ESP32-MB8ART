@@ -43,14 +43,21 @@ void TemperatureTask(void* pvParameters) {
                 // Get cached temperatures
                 LOG_INFO(TAG, "--- Temperature Readings ---");
 
+                // Check resolution mode for proper formatting
+                bool isHighRes = (mb8art->getCurrentRange() == mb8art::MeasurementRange::HIGH_RES);
+
                 for (uint8_t ch = 0; ch < MB8ART_NUM_CHANNELS; ch++) {
-                    // getSensorTemperature returns int16_t in tenths of degrees
-                    int16_t tempTenths = mb8art->getSensorTemperature(ch);
-                    float temp = tempTenths / 10.0f;
+                    int16_t rawTemp = mb8art->getSensorTemperature(ch);
 
                     // Check for valid reading (not error value)
-                    if (tempTenths != 0 && temp > -200.0f && temp < 1000.0f) {
-                        LOG_INFO(TAG, "  CH%d: %.1f C", ch, temp);
+                    if (rawTemp != 0 && rawTemp > -20000 && rawTemp < 100000) {
+                        if (isHighRes) {
+                            // HIGH_RES: rawTemp is in hundredths (e.g., 2232 = 22.32°C)
+                            LOG_INFO(TAG, "  CH%d: %d.%02d C", ch, rawTemp / 100, abs(rawTemp % 100));
+                        } else {
+                            // LOW_RES: rawTemp is in tenths (e.g., 223 = 22.3°C)
+                            LOG_INFO(TAG, "  CH%d: %d.%d C", ch, rawTemp / 10, abs(rawTemp % 10));
+                        }
                     } else {
                         LOG_DEBUG(TAG, "  CH%d: Not connected", ch);
                     }
