@@ -438,7 +438,7 @@ public:
 
     // Diagnostic methods
     void printChannelDiagnostics();
-    uint8_t getActiveChannelCount() const;
+    // Note: getActiveChannelCount() defined inline below with other test accessors
     uint8_t getConnectedChannels() const;
 
     // State and status methods
@@ -484,7 +484,15 @@ public:
     
     // Check if module is offline/unresponsive
     bool isModuleOffline() const { return statusFlags.moduleOffline; }
-    
+
+    // Test accessors for consecutive timeout tracking
+    uint8_t getConsecutiveTimeouts() const { return consecutiveTimeouts; }
+    static constexpr uint8_t getOfflineThreshold() { return OFFLINE_THRESHOLD; }
+
+    // Test accessors for active channel optimization
+    EventBits_t getActiveChannelMask() const { return activeChannelMask; }
+    uint8_t getActiveChannelCount() const { return activeChannelCount; }
+
     // Probe device to check if it's responsive
     bool probeDevice();
 
@@ -566,6 +574,40 @@ public:
         (void)enable;
         return IDeviceInstance::DeviceResult<void>(IDeviceInstance::DeviceError::UNKNOWN_ERROR);
     }
+
+protected:
+    // Protected interface for testing (MockMB8ART)
+    // These methods allow mock objects to simulate hardware behavior
+
+    /**
+     * @brief Increment consecutive timeout counter and set offline if threshold reached
+     * Called by waitForData() on timeout. Made protected for testing.
+     */
+    void incrementTimeoutCounter() {
+        consecutiveTimeouts++;
+        if (consecutiveTimeouts >= OFFLINE_THRESHOLD && !statusFlags.moduleOffline) {
+            statusFlags.moduleOffline = 1;
+        }
+    }
+
+    /**
+     * @brief Reset timeout counter and clear offline flag
+     * Called on successful Modbus response. Made protected for testing.
+     */
+    void resetTimeoutCounter() {
+        consecutiveTimeouts = 0;
+        statusFlags.moduleOffline = 0;
+    }
+
+    /**
+     * @brief Update the pre-computed active channel mask
+     * Call after channel configuration changes
+     */
+    void updateActiveChannelMask();
+
+    // Protected access to channel configuration for mock initialization
+    mb8art::ChannelConfig channelConfigs[DEFAULT_NUMBER_OF_SENSORS];
+    mb8art::MeasurementRange currentRange = mb8art::MeasurementRange::LOW_RES;
 
 private:
     // Private member variables
@@ -655,8 +697,8 @@ private:
     void updateConnectionStatus(uint8_t channel, bool connected);
     void readOptionalSettings();
     void setInitializationBit(EventBits_t bit);
-    void updateActiveChannelMask();  // Update pre-computed channel mask
-    
+    // Note: updateActiveChannelMask is protected for test access
+
     // Helper methods for bit field access
     inline bool isSensorConnected(uint8_t channel) const {
         return (channel < DEFAULT_NUMBER_OF_SENSORS) ? (sensorConnected & (1 << channel)) != 0 : false;
@@ -683,8 +725,7 @@ private:
     // Member variables for state tracking
     ModuleSettings moduleSettings;
     mb8art::SensorReading sensorReadings[DEFAULT_NUMBER_OF_SENSORS];
-    volatile mb8art::MeasurementRange currentRange;
-    mb8art::ChannelConfig channelConfigs[DEFAULT_NUMBER_OF_SENSORS];
+    // Note: channelConfigs and currentRange are protected for test access
     
     // Passive responsiveness tracking (from RYN4 suggestion)
     TickType_t lastResponseTime = 0;
@@ -700,6 +741,10 @@ private:
     // Pre-computed active channel mask for waitForData optimization
     EventBits_t activeChannelMask = 0;
     uint8_t activeChannelCount = 0;
+
+    // Consecutive timeout tracking for automatic offline detection
+    uint8_t consecutiveTimeouts = 0;
+    static constexpr uint8_t OFFLINE_THRESHOLD = 3;  // Auto-offline after 3 consecutive timeouts
 
     // Three separate event groups for clean separation (RYN4 pattern)
     EventGroupHandle_t xTaskEventGroup;    // Task communication bits

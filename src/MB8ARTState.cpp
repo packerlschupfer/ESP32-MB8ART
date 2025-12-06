@@ -142,15 +142,7 @@ bool MB8ART::isModuleResponsive() const {
     return false;
 }
 
-uint8_t MB8ART::getActiveChannelCount() const {
-    uint8_t count = 0;
-    for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
-        if (channelConfigs[i].mode != static_cast<uint16_t>(mb8art::ChannelMode::DEACTIVATED)) {
-            count++;
-        }
-    }
-    return count;
-}
+// Note: getActiveChannelCount() is now inline in MB8ART.h using the pre-computed member
 
 uint8_t MB8ART::getConnectedChannels() const {
     return sensorConnected;

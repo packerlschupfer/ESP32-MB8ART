@@ -36,33 +36,32 @@ void TemperatureTask(void* pvParameters) {
             continue;
         }
 
-        // Read all channels asynchronously
-        auto result = mb8art->readAllChannelsAsync();
+        // Request temperature data from all channels
+        if (mb8art->requestTemperatures()) {
+            // Wait for data with timeout
+            if (mb8art->waitForData()) {
+                // Get cached temperatures
+                LOG_INFO(TAG, "--- Temperature Readings ---");
 
-        if (result.isOk()) {
-            // Get cached temperatures
-            LOG_INFO(TAG, "--- Temperature Readings ---");
+                for (uint8_t ch = 0; ch < MB8ART_NUM_CHANNELS; ch++) {
+                    // getSensorTemperature returns int16_t in tenths of degrees
+                    int16_t tempTenths = mb8art->getSensorTemperature(ch);
+                    float temp = tempTenths / 10.0f;
 
-            for (uint8_t ch = 0; ch < MB8ART_NUM_CHANNELS; ch++) {
-                auto tempResult = mb8art->getChannelTemperature(ch);
-
-                if (tempResult.isOk()) {
-                    float temp = tempResult.value();
-
-                    // Check for valid reading
-                    if (temp > -200.0f && temp < 1000.0f) {
-                        LOG_INFO(TAG, "  CH%d: %.2f C", ch, temp);
+                    // Check for valid reading (not error value)
+                    if (tempTenths != 0 && temp > -200.0f && temp < 1000.0f) {
+                        LOG_INFO(TAG, "  CH%d: %.1f C", ch, temp);
                     } else {
                         LOG_DEBUG(TAG, "  CH%d: Not connected", ch);
                     }
-                } else {
-                    LOG_DEBUG(TAG, "  CH%d: Read error", ch);
                 }
-            }
 
-            LOG_INFO(TAG, "----------------------------");
+                LOG_INFO(TAG, "----------------------------");
+            } else {
+                LOG_WARN(TAG, "Timeout waiting for temperature data");
+            }
         } else {
-            LOG_WARN(TAG, "Failed to read temperatures");
+            LOG_WARN(TAG, "Failed to request temperatures");
         }
 
         // Wait for next interval

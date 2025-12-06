@@ -142,7 +142,7 @@ bool TemperatureTask::readTemperatureData() {
     auto result = mb8artDevice->reqTemperatures(MB8ART_NUM_CHANNELS, MB8ART_HIGH_RESOLUTION);
     
     if (!result.isOk()) {
-        LOG_ERROR(TASK_TAG, "Failed to request temperatures: %d", static_cast<int>(result.error));
+        LOG_ERROR(TASK_TAG, "Failed to request temperatures: %d", static_cast<int>(result.error()));
         return false;
     }
     

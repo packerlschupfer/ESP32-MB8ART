@@ -89,14 +89,8 @@ IDeviceInstance::DeviceError MB8ART::waitForData(TickType_t timeout) {
         return IDeviceInstance::DeviceError::NOT_INITIALIZED;
     }
 
-    // Calculate active channel mask based on configured channels
-    EventBits_t activeChannelMask = 0;
-    for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
-        if (channelConfigs[i].mode != static_cast<uint16_t>(mb8art::ChannelMode::DEACTIVATED)) {
-            activeChannelMask |= (1 << i);
-        }
-    }
-
+    // Use pre-computed member variable (maintained by updateActiveChannelMask())
+    // Avoids redundant iteration and timing window with configuration changes
     if (activeChannelMask == 0) {
         LOG_MB8ART_WARN_NL("No active channels configured");
         return IDeviceInstance::DeviceError::INVALID_PARAMETER;
@@ -115,6 +109,9 @@ IDeviceInstance::DeviceError MB8ART::waitForData(TickType_t timeout) {
 
     if (updateBits & activeChannelMask) {
         LOG_MB8ART_DEBUG_NL("Received update bits: 0x%06X", updateBits);
+
+        // Reset consecutive timeout counter on successful data reception
+        consecutiveTimeouts = 0;
 
         // Check for errors on the same channels
         EventBits_t errorBits = MB8ART_SRP_EVENT_GROUP_GET_BITS(xErrorEventGroup);
@@ -137,7 +134,18 @@ IDeviceInstance::DeviceError MB8ART::waitForData(TickType_t timeout) {
         return IDeviceInstance::DeviceError::SUCCESS;
     }
 
-    LOG_MB8ART_ERROR_NL("Timeout waiting for sensor data (mask: 0x%06X)", activeChannelMask);
+    // Timeout occurred - track consecutive failures for automatic offline detection
+    consecutiveTimeouts++;
+    LOG_MB8ART_WARN_NL("Timeout waiting for sensor data (attempt %d/%d, mask: 0x%06X)",
+                       consecutiveTimeouts, OFFLINE_THRESHOLD, activeChannelMask);
+
+    // Auto-set offline flag after threshold reached
+    if (consecutiveTimeouts >= OFFLINE_THRESHOLD && !statusFlags.moduleOffline) {
+        statusFlags.moduleOffline = 1;
+        LOG_MB8ART_ERROR_NL("Module marked OFFLINE after %d consecutive timeouts",
+                           consecutiveTimeouts);
+    }
+
     return IDeviceInstance::DeviceError::TIMEOUT;
 }
 

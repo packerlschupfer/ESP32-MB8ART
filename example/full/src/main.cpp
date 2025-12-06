@@ -31,8 +31,8 @@
 
 static const char* TAG = "Main";
 
-// Global system initializer
-SystemInitializer* gSystemInitializer = nullptr;
+// Global system initializer (defined in SystemInitializer.cpp)
+extern SystemInitializer* gSystemInitializer;
 
 // Override Arduino loop task stack size
 size_t getArduinoLoopTaskStackSize() {
@@ -88,7 +88,7 @@ void loop() {
 
     // Handle OTA if network connected
     if (gSystemInitializer && gSystemInitializer->isNetworkConnected()) {
-        OTAManager::getInstance().handle();
+        OTAManager::handleUpdates();
     }
 
     // Heartbeat LED (1Hz blink when healthy)

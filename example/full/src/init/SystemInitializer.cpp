@@ -13,9 +13,11 @@
 #include <TaskManager.h>
 #include <Watchdog.h>
 #include <EthernetManager.h>
+#include <ETH.h>
 #include <OTAManager.h>
 #include <esp32ModbusRTU.h>
 #include <ModbusDevice.h>
+#include <ModbusRegistry.h>
 #include <MB8ART.h>
 
 static const char* TAG = "SystemInit";
@@ -171,31 +173,24 @@ Result<void> SystemInitializer::initializeHardware() {
 Result<void> SystemInitializer::initializeNetwork() {
     LOG_INFO(TAG, "Initializing network...");
 
-    // Initialize Ethernet
-    auto& ethManager = EthernetManager::getInstance();
-
-    if (!ethManager.begin()) {
+    // Initialize Ethernet using static API
+    auto initResult = EthernetManager::initialize();
+    if (!initResult.isOk()) {
         LOG_WARN(TAG, "Ethernet initialization failed");
         return Result<void>::error();
     }
 
     // Wait for connection
-    uint32_t startTime = millis();
-    while (!ethManager.isConnected() && (millis() - startTime) < ETH_CONNECTION_TIMEOUT_MS) {
-        delay(100);
-    }
-
-    if (!ethManager.isConnected()) {
+    if (!EthernetManager::waitForConnection(ETH_CONNECTION_TIMEOUT_MS)) {
         LOG_WARN(TAG, "Ethernet connection timeout");
         return Result<void>::error();
     }
 
     networkConnected_ = true;
-    LOG_INFO(TAG, "Ethernet connected: %s", ethManager.getIPAddress().toString().c_str());
+    LOG_INFO(TAG, "Ethernet connected: %s", ETH.localIP().toString().c_str());
 
     // Initialize OTA
-    auto& otaManager = OTAManager::getInstance();
-    otaManager.begin(DEVICE_HOSTNAME, OTA_PASSWORD, OTA_PORT);
+    OTAManager::initialize(DEVICE_HOSTNAME, OTA_PASSWORD, OTA_PORT);
     LOG_INFO(TAG, "OTA ready on port %d", OTA_PORT);
 
     LOG_INFO(TAG, "Network initialized");
@@ -212,8 +207,8 @@ Result<void> SystemInitializer::initializeModbus() {
         return Result<void>::error();
     }
 
-    // Set global ModbusRTU instance
-    setGlobalModbusRTU(gModbusMaster);
+    // Set global ModbusRTU instance via ModbusRegistry
+    modbus::ModbusRegistry::getInstance().setModbusRTU(gModbusMaster);
 
     // Register callbacks
     gModbusMaster->onData(mainHandleData);

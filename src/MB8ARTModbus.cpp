@@ -53,11 +53,20 @@ void MB8ART::onAsyncResponse(uint8_t functionCode, uint16_t address,
 
 
 
-void MB8ART::handleModbusResponse(uint8_t functionCode, uint16_t startingAddress, 
+void MB8ART::handleModbusResponse(uint8_t functionCode, uint16_t startingAddress,
                                  const uint8_t* data, size_t length) {
     // Update response time on ANY successful response (passive monitoring)
     lastResponseTime = xTaskGetTickCount();
-    
+
+    // Reset timeout counter - module is responsive
+    consecutiveTimeouts = 0;
+
+    // Clear offline flag if it was set (device is back online)
+    if (statusFlags.moduleOffline) {
+        statusFlags.moduleOffline = 0;
+        LOG_MB8ART_INFO_NL("Module back ONLINE - received valid response");
+    }
+
     if (data == nullptr || length == 0) {
         LOG_MB8ART_ERROR_NL("Invalid response data");
         return;

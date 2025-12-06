@@ -261,9 +261,9 @@ void initializeNetwork() {
 
 void initializeModbus() {
     LOG_INFO(LOG_TAG_MAIN, "Initializing Modbus...");
-    
-    // Set the global ModbusRTU instance
-    setGlobalModbusRTU(&modbusMaster);
+
+    // Set the global ModbusRTU instance via ModbusRegistry
+    modbus::ModbusRegistry::getInstance().setModbusRTU(&modbusMaster);
     
     // Register global Modbus callbacks
     modbusMaster.onData(mainHandleData);
@@ -292,8 +292,8 @@ void initializeMB8ART() {
     LOG_INFO(LOG_TAG_MAIN, "Starting MB8ART initialization...");
     uint32_t startTime = millis();
     
-    bool initResult = temperatureModule->initialize();
-    if (initResult) {
+    auto initResult = temperatureModule->initialize();
+    if (initResult.isOk()) {
         LOG_INFO(LOG_TAG_MAIN, "MB8ART initialized successfully in %lu ms", 
                  millis() - startTime);
         

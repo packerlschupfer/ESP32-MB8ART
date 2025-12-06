@@ -12,6 +12,9 @@
 
 using namespace mb8art;
 
+// Spinlock for thread-safe access to static log throttle array
+static portMUX_TYPE logThrottleMutex = portMUX_INITIALIZER_UNLOCKED;
+
 // MB8ART specific methods
 bool MB8ART::requestTemperatures() {
     // Prevent polling if device is offline or not initialized
@@ -94,11 +97,19 @@ void MB8ART::processTemperatureData(const uint8_t* data, size_t length,
         if (rawData == 0x7530 || rawData == 0xFFFF || rawData == 0x0000) {
             if (rawData != 0x7530) {
                 // Log non-standard error codes for diagnostics (only once per 10s per channel)
+                // Thread-safe access to static throttle array
                 static uint32_t lastLogTime[DEFAULT_NUMBER_OF_SENSORS] = {0};
                 uint32_t now = xTaskGetTickCount();
-                if (now - lastLogTime[i] > pdMS_TO_TICKS(10000)) {
-                    LOG_MB8ART_ERROR_NL("Channel %d: Modbus error code 0x%04X", i, rawData);
+
+                taskENTER_CRITICAL(&logThrottleMutex);
+                bool shouldLog = (now - lastLogTime[i] > pdMS_TO_TICKS(10000));
+                if (shouldLog) {
                     lastLogTime[i] = now;
+                }
+                taskEXIT_CRITICAL(&logThrottleMutex);
+
+                if (shouldLog) {
+                    LOG_MB8ART_ERROR_NL("Channel %d: Modbus error code 0x%04X", i, rawData);
                 }
             }
             handleSensorError(i, statusBuffer, bufferSize, offset);

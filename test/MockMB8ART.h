@@ -142,57 +142,66 @@ public:
         errorStats.clear();
         lastError = ModbusError::SUCCESS;
     }
-    
-protected:
-    // Override MB8ART protected methods for testing
-    
-    bool configure() override {
+
+    // ========================================================================
+    // Issue Fix Test Helpers (Added for test_mb8art_issue_fixes.cpp)
+    // ========================================================================
+    // Note: getActiveChannelMask(), getActiveChannelCount(), and
+    // getConsecutiveTimeouts() are inherited from MB8ART's public interface
+
+    /**
+     * @brief Simulate a timeout in waitForData
+     * Increments consecutiveTimeouts and potentially sets offline flag
+     */
+    void simulateTimeout() {
+        incrementTimeoutCounter();  // Use protected method from MB8ART
+    }
+
+    /**
+     * @brief Simulate a successful Modbus response
+     * Resets consecutiveTimeouts and clears offline flag
+     */
+    void simulateSuccessfulResponse() {
+        resetTimeoutCounter();  // Use protected method from MB8ART
+    }
+
+    /**
+     * @brief Check if device is ready (initialized)
+     * @return true if initialized successfully
+     */
+    bool isReady() const {
+        return mockInitialized;
+    }
+
+    /**
+     * @brief Force update of active channel mask
+     * Wrapper to call protected parent method
+     */
+    void forceUpdateActiveChannelMask() {
+        updateActiveChannelMask();  // Protected method from MB8ART
+    }
+
+    /**
+     * @brief Initialize the mock device
+     * @return DeviceResult indicating success or failure
+     */
+    IDeviceInstance::DeviceResult<void> initialize() {
         if (shouldFailInit) {
-            return false;
+            return IDeviceInstance::DeviceResult<void>(IDeviceInstance::DeviceError::UNKNOWN_ERROR);
         }
-        
-        // Simulate successful configuration
+
+        // Copy mock channel configs to parent's protected member
         currentRange = mockRange;
-        
-        // Copy mock channel configs
         for (int i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
             channelConfigs[i] = mockChannelConfigs[i];
         }
-        
-        // Mark as initialized
-        initialized = true;
-        setInitializationBit(InitBits::ALL_BITS);
-        
-        return true;
+
+        mockInitialized = true;
+        updateActiveChannelMask();
+
+        return IDeviceInstance::DeviceResult<void>();
     }
-    
-    bool probeDevice() override {
-        return !mockOffline;
-    }
-    
-    bool sendRequest(uint16_t registerAddress, uint16_t numRegisters, 
-                    esp32Modbus::FunctionCode fc) override {
-        // Track requests
-        if (registerAddress >= TEMPERATURE_REGISTER_START && 
-            registerAddress < TEMPERATURE_REGISTER_START + DEFAULT_NUMBER_OF_SENSORS) {
-            temperatureRequestCount++;
-        } else if (registerAddress >= CHANNEL_CONFIG_REGISTER_START) {
-            configRequestCount++;
-        }
-        
-        // Simulate immediate response for synchronous reads during init
-        if (!initialized && fc == esp32Modbus::FunctionCode::READ_HOLD_REGISTER) {
-            // Simulate configuration response
-            if (registerAddress == MEASUREMENT_RANGE_REGISTER) {
-                uint8_t data[2] = {0, static_cast<uint8_t>(mockRange)};
-                simulateModbusResponse(0x03, registerAddress, data, 2);
-            }
-            // Add more register simulations as needed
-        }
-        
-        return !mockOffline;
-    }
-    
+
 private:
     // Mock data storage
     std::array<float, DEFAULT_NUMBER_OF_SENSORS> mockTemperatures;
@@ -203,6 +212,7 @@ private:
     // Mock behavior flags
     bool shouldFailInit = false;
     bool mockOffline = false;
+    bool mockInitialized = false;
     
     // Tracking counters
     uint32_t temperatureRequestCount = 0;
