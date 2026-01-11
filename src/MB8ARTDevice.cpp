@@ -586,7 +586,12 @@ int16_t MB8ART::getDataScaleDivider(IDeviceInstance::DeviceDataType dataType, ui
                 return (currentRange == mb8art::MeasurementRange::HIGH_RES) ? 100 : 10;
             }
 
-            // Voltage, current, and deactivated channels: tenths
+            // Current channels: hundredths (processCurrentData returns hundredths of mA)
+            if (channelConfigs[channel].mode == static_cast<uint16_t>(mb8art::ChannelMode::CURRENT)) {
+                return 100;
+            }
+
+            // Voltage and deactivated channels: tenths
             return 10;
         }
         default:

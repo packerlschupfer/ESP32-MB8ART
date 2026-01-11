@@ -361,15 +361,37 @@ void MB8ART::processChannelConfig(uint8_t channel, uint16_t rawConfig) {
 
 
 int16_t MB8ART::processCurrentData(uint16_t rawData, mb8art::CurrentRange range) {
-    // For now, just return raw value since current mode isn't used
-    // TODO: Implement proper current scaling if needed
-    (void)range;  // Suppress unused warning
+    // Current data scaling per MB8ART official documentation:
+    // "Dividing the read data by 1500 gives the actual current"
+    // 4-20mA range: raw 6000-30000 = 4.000-20.000 mA
+    // Return value: current in hundredths of mA (e.g., 400 = 4.00 mA)
 
-    LOG_MB8ART_DEBUG_NL("Processing current data: Raw=0x%04X, Range=%s (raw value returned)",
-                        rawData,
-                        mb8art::currentRangeToString(range));
+    int16_t signedData = static_cast<int16_t>(rawData);
+    int16_t currentInHundredthsOfMA;
 
-    return static_cast<int16_t>(rawData);
+    switch (range) {
+        case mb8art::CurrentRange::MA_20:
+            // ±20mA range: raw / 1500 × 100 = raw / 15
+            currentInHundredthsOfMA = signedData / 15;
+            break;
+
+        case mb8art::CurrentRange::MA_4_TO_20:
+            // 4-20mA range: raw / 1500 × 100 = raw / 15
+            currentInHundredthsOfMA = signedData / 15;
+            break;
+
+        default:
+            LOG_MB8ART_WARN_NL("Unknown current range");
+            currentInHundredthsOfMA = signedData / 15;
+            break;
+    }
+
+    LOG_MB8ART_DEBUG_NL("Processing current data: Raw=%d, Range=%s -> %.2f mA",
+                        signedData,
+                        mb8art::currentRangeToString(range),
+                        currentInHundredthsOfMA / 100.0f);
+
+    return currentInHundredthsOfMA;
 }
 
 
