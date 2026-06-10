@@ -25,7 +25,8 @@
 #include <TaskManager.h>
 #ifdef USE_CUSTOM_LOGGER
     #include <Logger.h>
-    #include <LogInterfaceImpl.cpp>  // Include implementation, not header
+    // Note: LogInterfaceImpl.cpp is compiled by the ESP32-Logger library itself;
+    // do NOT #include it here or the linker reports multiple definitions.
     #include <ConsoleBackend.h>
 #endif
 
