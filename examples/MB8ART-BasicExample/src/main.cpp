@@ -66,7 +66,7 @@ void printTemperatures() {
         const auto& temps = result.value();
         for (size_t i = 0; i < temps.size() && i < 8; i++) {
             // Check if sensor is connected
-            if (tempSensor->isSensorConnected(i)) {
+            if (tempSensor->getSensorConnectionStatus(i)) {
                 // Get the scale divider for this channel (10 for LOW_RES, 100 for HIGH_RES)
                 float divider = tempSensor->getDataScaleDivider(
                     IDeviceInstance::DeviceDataType::TEMPERATURE, i);
@@ -87,7 +87,7 @@ void printConnectionStatus() {
     Serial.print("Sensor Status: ");
     for (int i = 0; i < 8; i++) {
         Serial.printf("S%d:%s ", i + 1,
-            tempSensor->isSensorConnected(i) ? "OK" : "NC");
+            tempSensor->getSensorConnectionStatus(i) ? "OK" : "NC");
     }
     Serial.println();
 }
@@ -195,7 +195,7 @@ void loop() {
             printConnectionStatus();
 
             // Print module internal temperature if available
-            float moduleTemp = tempSensor->getModuleTemperature();
+            float moduleTemp = tempSensor->getModuleSettings().moduleTemperature;
             if (moduleTemp > -999.0f) {
                 Serial.printf("Module Temperature: %.1f°C\n", moduleTemp);
             }
