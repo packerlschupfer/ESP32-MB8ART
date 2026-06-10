@@ -15,7 +15,7 @@
     "url": "https://github.com/packerlschupfer/ESP32-MB8ART.git"
   },
   "homepage": "https://github.com/packerlschupfer/ESP32-MB8ART",
-  "license": "MIT",
+  "license": "GPL-3",
   "frameworks": ["arduino", "espidf"],
   "platforms": ["espressif32"],
   "include": "MB8ART.h",
