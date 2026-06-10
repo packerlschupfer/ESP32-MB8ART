@@ -8,7 +8,9 @@
 #include <MB8ART.h>
 
 // Construct an MB8ART device at Modbus server address 0x03.
-static MB8ART mb8art(0x03, "MB8ART-smoke");
+// NOTE: the variable cannot be named `mb8art` — that collides with the
+// library's `namespace mb8art`.
+static MB8ART device(0x03, "MB8ART-smoke");
 
 void setup() {
   Serial.begin(115200);
@@ -16,9 +18,9 @@ void setup() {
   // Exercise a representative slice of the public API without needing a
   // live Modbus bus: construction (above) plus const status/identity
   // queries that are safe to call before initialization.
-  const uint8_t addr = mb8art.getServerAddress();
-  const bool initialized = mb8art.isInitialized();
-  const bool ready = mb8art.isReady();
+  const uint8_t addr = device.getServerAddress();
+  const bool initialized = device.isInitialized();
+  const bool ready = device.isReady();
 
   Serial.printf("MB8ART addr=0x%02X initialized=%d ready=%d\n",
                 addr, initialized ? 1 : 0, ready ? 1 : 0);
@@ -26,6 +28,6 @@ void setup() {
 
 void loop() {
   // Touch another read-only accessor so it is part of the linked image.
-  (void)mb8art.isModuleResponsive();
+  (void)device.isModuleResponsive();
   delay(1000);
 }
