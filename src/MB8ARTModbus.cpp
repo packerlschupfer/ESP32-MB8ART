@@ -346,8 +346,8 @@ void MB8ART::handleModbusResponse(uint8_t functionCode, uint16_t startingAddress
 
                     // Validate packet length
                     if (!validatePacketLength(length, EXPECTED_TEMPERATURE_PACKET_LENGTH, "Temperature Data")) {
-                        // Set error bits for all sensors (interleaved format)
-                        MB8ART_SRP_EVENT_GROUP_SET_BITS(xSensorEventGroup, mb8art::ALL_SENSOR_ERROR_BITS);
+                        // Set error bits for all sensors
+                        MB8ART_SRP_EVENT_GROUP_SET_BITS(xSensorEventGroup, allErrorBits());
                         
                         // Notify tasks of error
                         if (xTaskEventGroup) {
@@ -419,7 +419,7 @@ void MB8ART::handleModbusResponse(uint8_t functionCode, uint16_t startingAddress
             if (startingAddress >= CHANNEL_CONFIG_REGISTER_START && 
                 startingAddress < CHANNEL_CONFIG_REGISTER_START + DEFAULT_NUMBER_OF_SENSORS) {
                 uint8_t channel = startingAddress - CHANNEL_CONFIG_REGISTER_START;
-                EventBits_t sensorUpdateBit = mb8art::SENSOR_UPDATE_BITS[channel];
+                EventBits_t sensorUpdateBit = updateBitFor(channel);
                 setUpdateEventBits(sensorUpdateBit);
                 
                 MB8ART_SRP_EVENT_GROUP_SET_BITS(xTaskEventGroup, DATA_READY_BIT);
@@ -600,7 +600,7 @@ void MB8ART::handleModbusError(ModbusError error) {
     }
     
     // Set error bits for all sensors (interleaved format)
-    setErrorEventBits(mb8art::ALL_SENSOR_ERROR_BITS);
+    setErrorEventBits(allErrorBits());
 }
 
 
@@ -630,10 +630,10 @@ void MB8ART::handleConnectionStatus(const uint8_t* data, size_t length) {
         
         // Only mark as error if channel is active and disconnected
         if (!connected && channelConfigs[i].mode != static_cast<uint16_t>(mb8art::ChannelMode::DEACTIVATED)) {
-            errorBitsToSet |= mb8art::SENSOR_ERROR_BITS[i];
+            errorBitsToSet |= errorBitFor(i);
             // Don't invalidate temperature data here - let the temperature reading handle that
         } else if (connected) {
-            errorBitsToClear |= mb8art::SENSOR_ERROR_BITS[i];
+            errorBitsToClear |= errorBitFor(i);
         }
     }
 
@@ -653,7 +653,7 @@ void MB8ART::handleConnectionStatus(const uint8_t* data, size_t length) {
 
 void MB8ART::handleDisconnection() {
     LOG_MB8ART_ERROR_NL("Device connection lost: %d", getServerAddress());
-    setErrorEventBits(mb8art::ALL_SENSOR_ERROR_BITS);
+    setErrorEventBits(allErrorBits());
     for (int i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
         sensorReadings[i].isTemperatureValid = false;
         sensorReadings[i].Error = true;

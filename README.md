@@ -199,7 +199,7 @@ void temperatureTask(void* pvParameters) {
             // Check for sensor updates (use xSensorEventGroup for per-sensor status)
             EventBits_t sensorBits = xEventGroupGetBits(tempModule->getSensorEventGroup());
             for (int i = 0; i < 8; i++) {
-                if (sensorBits & mb8art::SENSOR_UPDATE_BITS[i]) {
+                if (sensorBits & tempModule->updateBitFor(i)) {
                     float temp = tempModule->getSensorTemperature(i);
                     Serial.printf("Sensor %d updated: %.2f°C\n", i, temp);
                 }
@@ -307,8 +307,12 @@ The library uses FreeRTOS event groups for task synchronization:
 - `DATA_READY_BIT` - Data received and ready
 - `DATA_ERROR_BIT` - Error occurred during operation
 - `INIT_COMPLETE_BIT` - Initialization complete
-- `SENSOR1_UPDATE_BIT` through `SENSOR8_UPDATE_BIT` - Individual sensor updates
-- `SENSOR1_ERROR_BIT` through `SENSOR8_ERROR_BIT` - Individual sensor errors
+- Per-channel update and error bits in the sensor event group. With `setHardwareConfig()` each
+  channel uses the `updateEventBit` / `errorEventBit` of its config entry (0 = no event);
+  without a config the interleaved defaults apply: `SENSOR0_UPDATE_BIT` .. `SENSOR7_UPDATE_BIT`
+  (bits 0, 2, .. 14) and `SENSOR0_ERROR_BIT` .. `SENSOR7_ERROR_BIT` (bits 1, 3, .. 15).
+  `updateBitFor(channel)`, `errorBitFor(channel)`, `allUpdateBits()` and `allErrorBits()`
+  return the bits in use.
 
 ### Data Structures
 

@@ -223,8 +223,8 @@ struct ChannelConfig {
  */
 struct SensorHardwareConfig {
     uint8_t channelNumber;     // Physical channel number (0-7)
-    EventBits_t updateEventBit; // Event bit for successful update
-    EventBits_t errorEventBit;  // Event bit for error indication
+    EventBits_t updateEventBit; // Event bit for successful update (0 = none)
+    EventBits_t errorEventBit;  // Event bit for error indication (0 = none)
     bool isActive;              // Sensor channel is in use
 };
 
@@ -369,7 +369,11 @@ public:
      * @brief Set hardware configuration (unified mapping API)
      *
      * This method accepts a pointer to a constexpr hardware config array.
-     * The config defines the event bits and channel numbers.
+     * The config defines the event bits and channel numbers. Entry i is used for channel i:
+     * its updateEventBit / errorEventBit are set in the sensor event group (0 = no event).
+     * Without a config the interleaved defaults are used (update 2n, error 2n+1). Before
+     * this was honoured the bits in the config were ignored, so an application whose own
+     * bit layout differed from the interleaved one received the wrong channels.
      *
      * @param config Pointer to array of 8 SensorHardwareConfig structs
      *
@@ -464,29 +468,36 @@ public:
     void clearErrorEventBits(uint32_t bitsToClear);
     void updateSensorEventBits(uint8_t sensorIndex, bool isValid, bool hasError);
 
-    // Clear all sensor update/error bits (uses interleaved event group)
+    // Per-channel event bits: from setHardwareConfig() when set, otherwise the interleaved
+    // defaults (SENSOR_UPDATE_BITS / SENSOR_ERROR_BITS). 0 = no event for that channel.
+    EventBits_t updateBitFor(uint8_t channel) const;
+    EventBits_t errorBitFor(uint8_t channel) const;
+    EventBits_t allUpdateBits() const;
+    EventBits_t allErrorBits() const;
+
+    // Clear all sensor update/error bits
     void clearAllUpdateBits() {
-        xEventGroupClearBits(xSensorEventGroup, mb8art::ALL_SENSOR_UPDATE_BITS);
+        xEventGroupClearBits(xSensorEventGroup, allUpdateBits());
     }
 
     void clearAllErrorBits() {
-        xEventGroupClearBits(xSensorEventGroup, mb8art::ALL_SENSOR_ERROR_BITS);
+        xEventGroupClearBits(xSensorEventGroup, allErrorBits());
     }
 
     void clearAllSensorBits() {
-        xEventGroupClearBits(xSensorEventGroup, mb8art::ALL_SENSOR_UPDATE_BITS | mb8art::ALL_SENSOR_ERROR_BITS);
+        xEventGroupClearBits(xSensorEventGroup, allUpdateBits() | allErrorBits());
     }
 
     // Check if any sensor has an update pending
     bool hasAnyUpdatePending() const {
         EventBits_t bits = xEventGroupGetBits(xSensorEventGroup);
-        return (bits & mb8art::ALL_SENSOR_UPDATE_BITS) != 0;
+        return (bits & allUpdateBits()) != 0;
     }
 
     // Check if any sensor has an error
     bool hasAnyError() const {
         EventBits_t bits = xEventGroupGetBits(xSensorEventGroup);
-        return (bits & mb8art::ALL_SENSOR_ERROR_BITS) != 0;
+        return (bits & allErrorBits()) != 0;
     }
     
     // Check if module is offline/unresponsive

@@ -117,11 +117,11 @@ IDeviceInstance::DeviceError MB8ART::waitForData(TickType_t timeout) {
         return IDeviceInstance::DeviceError::INVALID_PARAMETER;
     }
 
-    // Convert activeChannelMask (simple bits 0-7) to interleaved update bits
+    // Convert activeChannelMask (simple bits 0-7) to the channels' update event bits
     uint32_t interleavedUpdateMask = 0;
     for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
         if (activeChannelMask & (1 << i)) {
-            interleavedUpdateMask |= mb8art::SENSOR_UPDATE_BITS[i];
+            interleavedUpdateMask |= updateBitFor(i);
         }
     }
 
@@ -145,10 +145,10 @@ IDeviceInstance::DeviceError MB8ART::waitForData(TickType_t timeout) {
         // Process each channel - check both update and error bits
         for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
             if (activeChannelMask & (1 << i)) {
-                if (sensorBits & mb8art::SENSOR_UPDATE_BITS[i]) {
+                if (sensorBits & updateBitFor(i)) {
                     LOG_MB8ART_DEBUG_NL("Channel %d data updated", i);
                 }
-                if (sensorBits & mb8art::SENSOR_ERROR_BITS[i]) {
+                if (sensorBits & errorBitFor(i)) {
                     LOG_MB8ART_WARN_NL("Channel %d error detected", i);
                 }
             }
@@ -217,7 +217,7 @@ IDeviceInstance::DeviceResult<void> MB8ART::requestData() {
 
     for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
         if (channelConfigs[i].mode != static_cast<uint16_t>(mb8art::ChannelMode::DEACTIVATED)) {
-            interleavedMask |= mb8art::SENSOR_UPDATE_BITS[i] | mb8art::SENSOR_ERROR_BITS[i];
+            interleavedMask |= updateBitFor(i) | errorBitFor(i);
             localActiveCount++;
         }
     }

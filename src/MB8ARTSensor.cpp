@@ -121,7 +121,7 @@ void MB8ART::processTemperatureData(const uint8_t* data, size_t length,
         // alarms when outside temperature was near freezing.
         if (rawData == 0x7530) {
             handleSensorError(i, statusBuffer, bufferSize, offset);
-            errorBitsToSet |= mb8art::SENSOR_ERROR_BITS[i];
+            errorBitsToSet |= errorBitFor(i);
             sensorReadings[i].lastCommandSuccess = false;
             sensorReadings[i].isStateConfirmed = false;
             continue;
@@ -227,8 +227,8 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
         // Update global timestamp for optimization
         lastAnyChannelUpdate = now;
 
-        updateBitsToSet |= mb8art::SENSOR_UPDATE_BITS[channel];
-        errorBitsToClear |= mb8art::SENSOR_ERROR_BITS[channel];
+        updateBitsToSet |= updateBitFor(channel);
+        errorBitsToClear |= errorBitFor(channel);
 
         // Safe buffer append with bounds checking
         // Format based on measurement range
@@ -261,7 +261,7 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
             *sensorBindings[channel].validityPtr = false;
         }
 
-        errorBitsToSet |= mb8art::SENSOR_ERROR_BITS[channel];
+        errorBitsToSet |= errorBitFor(channel);
 
         // Safe buffer append - format based on measurement range
         // Note: Need explicit sign handling for negative temperatures

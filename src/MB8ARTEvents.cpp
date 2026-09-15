@@ -24,7 +24,8 @@
  * @brief Event group and notification handling
  *
  * This file contains event group and notification handling for the MB8ART library.
- * Uses RYN4 interleaved bit pattern: U0 E0 U1 E1 ... U7 E7
+ * Default bit pattern (no setHardwareConfig()): RYN4 interleaved U0 E0 U1 E1 ... U7 E7.
+ * With a hardware config, each channel uses the bits from its config entry.
  */
 
 #include "MB8ART.h"
@@ -38,6 +39,36 @@ void MB8ART::notifyDataReceiver() {
         xTaskNotifyGive(dataReceiverTask);
         LOG_MB8ART_DEBUG_NL("Notified data receiver task");
     }
+}
+
+EventBits_t MB8ART::updateBitFor(uint8_t channel) const {
+    if (channel >= DEFAULT_NUMBER_OF_SENSORS) {
+        return 0;
+    }
+    return hardwareConfig ? hardwareConfig[channel].updateEventBit : mb8art::SENSOR_UPDATE_BITS[channel];
+}
+
+EventBits_t MB8ART::errorBitFor(uint8_t channel) const {
+    if (channel >= DEFAULT_NUMBER_OF_SENSORS) {
+        return 0;
+    }
+    return hardwareConfig ? hardwareConfig[channel].errorEventBit : mb8art::SENSOR_ERROR_BITS[channel];
+}
+
+EventBits_t MB8ART::allUpdateBits() const {
+    EventBits_t bits = 0;
+    for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
+        bits |= updateBitFor(i);
+    }
+    return bits;
+}
+
+EventBits_t MB8ART::allErrorBits() const {
+    EventBits_t bits = 0;
+    for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
+        bits |= errorBitFor(i);
+    }
+    return bits;
 }
 
 
@@ -127,9 +158,8 @@ void MB8ART::updateSensorEventBits(uint8_t sensorIndex, bool isValid, bool hasEr
         return;
     }
 
-    // Use constexpr arrays for interleaved bit positions
-    uint32_t updateBit = mb8art::SENSOR_UPDATE_BITS[sensorIndex];
-    uint32_t errorBit = mb8art::SENSOR_ERROR_BITS[sensorIndex];
+    uint32_t updateBit = updateBitFor(sensorIndex);
+    uint32_t errorBit = errorBitFor(sensorIndex);
 
     if (isValid) {
         setUpdateEventBits(updateBit);
@@ -153,17 +183,16 @@ void MB8ART::clearDataEventBits() {
     // ESP32 requires a spinlock for critical sections
     static portMUX_TYPE clearDataMutex = portMUX_INITIALIZER_UNLOCKED;
 
-    // Use critical section to prevent race conditions
-    taskENTER_CRITICAL(&clearDataMutex);
-
-    // Build interleaved mask from active channel mask
-    // activeChannelMask uses simple bits (0-7), need to convert to interleaved format
+    // Build the event bit mask of the active channels (activeChannelMask uses bits 0-7)
     uint32_t interleavedMask = 0;
     for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
         if (activeChannelMask & (1 << i)) {
-            interleavedMask |= mb8art::SENSOR_UPDATE_BITS[i] | mb8art::SENSOR_ERROR_BITS[i];
+            interleavedMask |= updateBitFor(i) | errorBitFor(i);
         }
     }
+
+    // Use critical section to prevent race conditions
+    taskENTER_CRITICAL(&clearDataMutex);
 
     // Clear all active channel bits from sensor event group
     MB8ART_SRP_EVENT_GROUP_CLEAR_BITS(xSensorEventGroup, interleavedMask);
