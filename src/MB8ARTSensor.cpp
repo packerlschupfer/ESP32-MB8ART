@@ -26,6 +26,7 @@
  * This file contains sensor-specific operations and mappings for the MB8ART library.
  */
 
+#include <cstdlib>  // abs() for integer tenths formatting
 #include "MB8ART.h"
 #include <MutexGuard.h>
 
@@ -428,7 +429,10 @@ void MB8ART::printSensorReading(const mb8art::SensorReading& reading, int sensor
     
     LOG_MB8ART_INFO_NL("Sensor %d:", sensorIndex);
     if (reading.isTemperatureValid) {
-        LOG_MB8ART_INFO_NL("  Temperature: %.2f°C", reading.temperature);
+        // int16_t TENTHS - see the note in MB8ART.cpp; %.2f was undefined behaviour.
+        LOG_MB8ART_INFO_NL("  Temperature: %s%d.%d°C",
+                           reading.temperature < 0 ? "-" : "",
+                           abs(reading.temperature) / 10, abs(reading.temperature) % 10);
         LOG_MB8ART_INFO_NL("  Last Update: %lu ticks ago", 
                           xTaskGetTickCount() - reading.lastTemperatureUpdated);
     }

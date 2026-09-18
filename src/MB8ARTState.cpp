@@ -200,8 +200,10 @@ bool MB8ART::isTemperatureInRange(int16_t temperature) {
 void MB8ART::printModuleSettings() const {
     LOG_MB8ART_INFO_NL("=== MB8ART Module Settings ===");
     LOG_MB8ART_INFO_NL("RS485 Address: %d", moduleSettings.rs485Address);
-    LOG_MB8ART_INFO_NL("Baud Rate: %s", baudRateToString(static_cast<BaudRate>(moduleSettings.baudRate)));
-    LOG_MB8ART_INFO_NL("Parity: %s", parityToString(static_cast<Parity>(moduleSettings.parity)));
+    LOG_MB8ART_INFO_NL("Baud Rate: %s",
+                       baudRateToString(static_cast<BaudRate>(moduleSettings.baudRate)).c_str());
+    LOG_MB8ART_INFO_NL("Parity: %s",
+                       parityToString(static_cast<Parity>(moduleSettings.parity)).c_str());
     LOG_MB8ART_INFO_NL("Measurement Range: %s", 
                       (currentRange == mb8art::MeasurementRange::HIGH_RES) ? "HIGH_RES" : "LOW_RES");
     LOG_MB8ART_INFO_NL("Module Temperature: %.1f°C", moduleSettings.moduleTemperature);

@@ -84,7 +84,8 @@ IDeviceInstance::DeviceResult<void> MB8ART::waitForInitializationComplete(TickTy
 
     // Analyze missing bits
     EventBits_t missingBits = (~result) & InitBits::ALL_BITS;
-    LOG_MB8ART_ERROR_NL("Missing initialization bits: 0x%02X", missingBits);
+    LOG_MB8ART_ERROR_NL("Missing initialization bits: 0x%02lX",
+                        static_cast<unsigned long>(missingBits));
     
     if (missingBits & InitBits::DEVICE_RESPONSIVE) {
         LOG_MB8ART_ERROR_NL("Missing: Device Responsive");
@@ -160,8 +161,9 @@ IDeviceInstance::DeviceError MB8ART::waitForData(TickType_t timeout) {
 
     // Timeout occurred - track consecutive failures for automatic offline detection
     consecutiveTimeouts++;
-    LOG_MB8ART_WARN_NL("Timeout waiting for sensor data (attempt %d/%d, mask: 0x%04X)",
-                       consecutiveTimeouts, OFFLINE_THRESHOLD, interleavedUpdateMask);
+    LOG_MB8ART_WARN_NL("Timeout waiting for sensor data (attempt %d/%d, mask: 0x%04lX)",
+                       consecutiveTimeouts, OFFLINE_THRESHOLD,
+                       static_cast<unsigned long>(interleavedUpdateMask));
 
     // Auto-set offline flag after threshold reached
     if (consecutiveTimeouts >= OFFLINE_THRESHOLD && !statusFlags.moduleOffline) {

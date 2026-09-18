@@ -21,6 +21,7 @@
 
 // src/MB8ART.cpp
 
+#include <cstdlib>  // abs() for integer tenths formatting
 #include "MB8ART.h"
 #include <unordered_map>
 #include <string>
@@ -340,7 +341,8 @@ bool MB8ART::configure() {
         
         // Print summary
         LOG_MB8ART_INFO_NL("=== Fast Initialization Complete ===");
-        LOG_MB8ART_INFO_NL("Duration: %d ms", pdTICKS_TO_MS(initDuration));
+        LOG_MB8ART_INFO_NL("Duration: %lu ms",
+                       static_cast<unsigned long>(pdTICKS_TO_MS(initDuration)));
         LOG_MB8ART_INFO_NL("Active Channels: %d", activeCount);
         LOG_MB8ART_INFO_NL("Measurement Range: %s", 
                           (currentRange == mb8art::MeasurementRange::HIGH_RES) ? "HIGH_RES" : "LOW_RES");
@@ -372,8 +374,9 @@ bool MB8ART::configure() {
         EventBits_t initBits = MB8ART_SRP_EVENT_GROUP_GET_BITS(xInitEventGroup);
         
         TickType_t elapsedTime = xTaskGetTickCount() - initStartTime;
-        LOG_MB8ART_ERROR_NL("Initialization incomplete after %dms. Device at address %d may be offline or misconfigured",
-                           pdTICKS_TO_MS(elapsedTime), getServerAddress());
+        LOG_MB8ART_ERROR_NL("Initialization incomplete after %lums. Device at address %d may be offline or misconfigured",
+                           static_cast<unsigned long>(pdTICKS_TO_MS(elapsedTime)),
+                           getServerAddress());
         
         // Log which specific steps failed
         if (!(initBits & InitBits::DEVICE_RESPONSIVE)) {
@@ -387,7 +390,9 @@ bool MB8ART::configure() {
                               CHANNEL_CONFIG_REGISTER_START, CHANNEL_CONFIG_REGISTER_START + 7);
         }
         
-        LOG_MB8ART_ERROR_NL("Initialization status bits: 0x%02X (expected: 0x%02X)", initBits, InitBits::ALL_BITS);
+        LOG_MB8ART_ERROR_NL("Initialization status bits: 0x%02lX (expected: 0x%02lX)",
+                        static_cast<unsigned long>(initBits),
+                        static_cast<unsigned long>(InitBits::ALL_BITS));
         
         statusFlags.initialized = 0;
         statusFlags.moduleOffline = 1;  // Mark as offline if initialization failed
@@ -527,8 +532,13 @@ void MB8ART::printChannelDiagnostics() {
             
             if (sensorReadings[i].isTemperatureValid) {
                 validDataCount++;
-                LOG_MB8ART_INFO_NL("Channel %d: %s - %.2f°C", i, status.c_str(), 
-                                  sensorReadings[i].temperature);
+                // temperature is int16_t TENTHS: %.2f fed an int to a %f slot (undefined)
+                // and also implied the wrong scale. Integer formatting; sign handled before
+                // the split because integer division truncates toward zero.
+                LOG_MB8ART_INFO_NL("Channel %d: %s - %s%d.%d°C", i, status.c_str(),
+                                  sensorReadings[i].temperature < 0 ? "-" : "",
+                                  abs(sensorReadings[i].temperature) / 10,
+                                  abs(sensorReadings[i].temperature) % 10);
             } else {
                 LOG_MB8ART_INFO_NL("Channel %d: %s - No Valid Data", i, status.c_str());
             }
@@ -600,7 +610,8 @@ void MB8ART::printChannelDiagnostics() {
 // setInitializationBit with all safety checks and logging
 void MB8ART::setInitializationBit(EventBits_t bit) {
     if (!xInitEventGroup) {
-        LOG_MB8ART_ERROR_NL("xInitEventGroup is NULL - cannot set bit 0x%02X", bit);
+        LOG_MB8ART_ERROR_NL("xInitEventGroup is NULL - cannot set bit 0x%02lX",
+                            static_cast<unsigned long>(bit));
         return;
     }
     
