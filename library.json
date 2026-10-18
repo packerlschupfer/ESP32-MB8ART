@@ -26,6 +26,7 @@
     "ESP32-IDeviceInstance": "https://github.com/packerlschupfer/ESP32-IDeviceInstance.git"
   },
   "build": {
+    "libLDFMode": "deep+",
     "flags": [
       "-I$PROJECT_DIR/include"
     ],
