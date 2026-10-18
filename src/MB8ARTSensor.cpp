@@ -185,8 +185,10 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
 
     // Validate range based on resolution mode
     bool isHighRes = (currentRange == mb8art::MeasurementRange::HIGH_RES);
+    // HIGH_RES is specified for -200.00..200.00°C (see HARDWARE.md); 850.00°C in
+    // hundredths (85000) does not fit int16_t and silently wrapped to 19464.
     int16_t minValid = isHighRes ? -20000 : -2000;  // -200.00°C or -200.0°C
-    int16_t maxValid = isHighRes ? 85000 : 8500;    // 850.00°C or 850.0°C
+    int16_t maxValid = isHighRes ? 20000 : 8500;    //  200.00°C or 850.0°C
 
     if (value >= minValid && value <= maxValid) {
         // Store raw value in internal readings (preserves full resolution)
