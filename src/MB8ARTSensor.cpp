@@ -179,16 +179,18 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
                                char* statusBuffer,
                                size_t bufferSize,
                                int& offset) {
-    // Value format depends on currentRange:
-    // - LOW_RES: tenths (244 = 24.4°C)
-    // - HIGH_RES: hundredths (2440 = 24.40°C)
+    // Value format is per channel, the same rule getData() uses
+    // (getDataScaleDivider): PT/RTD follow the resolution register (tenths or
+    // hundredths), thermocouples are always tenths, current is hundredths of mA.
+    bool isHundredths = (getDataScaleDivider(IDeviceInstance::DeviceDataType::TEMPERATURE, channel) == 100);
+    bool isThermocouple = (channelConfigs[channel].mode == static_cast<uint16_t>(mb8art::ChannelMode::THERMOCOUPLE));
 
-    // Validate range based on resolution mode
-    bool isHighRes = (currentRange == mb8art::MeasurementRange::HIGH_RES);
-    // HIGH_RES is specified for -200.00..200.00°C (see HARDWARE.md); 850.00°C in
-    // hundredths (85000) does not fit int16_t and silently wrapped to 19464.
-    int16_t minValid = isHighRes ? -20000 : -2000;  // -200.00°C or -200.0°C
-    int16_t maxValid = isHighRes ? 20000 : 8500;    //  200.00°C or 850.0°C
+    // Valid windows (see HARDWARE.md):
+    // - hundredths: -200.00..200.00°C (HIGH_RES spec; also covers +-20.00mA)
+    // - thermocouple tenths: -200.0..1800.0°C (widest type, B)
+    // - other tenths: -200.0..850.0°C
+    int16_t minValid = isHundredths ? -20000 : -2000;
+    int16_t maxValid = isHundredths ? 20000 : (isThermocouple ? 18000 : 8500);
 
     if (value >= minValid && value <= maxValid) {
         // Store raw value in internal readings (preserves full resolution)
@@ -200,23 +202,23 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
 
         // Update bound pointers (unified mapping architecture)
         // ALWAYS write in tenths (Temperature_t format) for API consistency
-        // Convert to tenths with proper rounding for both modes:
-        // - LOW_RES: value already in tenths, use as-is
-        // - HIGH_RES: value in hundredths, round to nearest tenth
+        // Convert to tenths with proper rounding:
+        // - tenths: use as-is
+        // - hundredths: round to nearest tenth
         int16_t valueInTenths;
-        if (isHighRes) {
+        if (isHundredths) {
             // Round hundredths to tenths using symmetric rounding
-            // Examples: 735 (73.5°C) → 74 tenths (7.4°C)
-            //           734 (73.4°C) → 73 tenths (7.3°C)
-            //          -735 (-73.5°C) → -74 tenths (-7.4°C)
-            //          -734 (-73.4°C) → -73 tenths (-7.3°C)
+            // Examples: 735 (7.35°C) → 74 tenths (7.4°C)
+            //           734 (7.34°C) → 73 tenths (7.3°C)
+            //          -735 (-7.35°C) → -74 tenths (-7.4°C)
+            //          -734 (-7.34°C) → -73 tenths (-7.3°C)
             if (value >= 0) {
                 valueInTenths = (value + 5) / 10;  // Round positive values
             } else {
                 valueInTenths = (value - 5) / 10;  // Round negative values
             }
         } else {
-            // LOW_RES: value already in tenths
+            // Already in tenths
             valueInTenths = value;
         }
 
@@ -242,12 +244,12 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
             int written;
             const char* sign = (value < 0) ? "-" : "";
             int16_t absValue = (value < 0) ? -value : value;
-            if (currentRange == mb8art::MeasurementRange::HIGH_RES) {
-                // HIGH_RES: hundredths (-38 → "-0.38°C")
+            if (isHundredths) {
+                // Hundredths (-38 → "-0.38°C")
                 written = snprintf(statusBuffer + offset, remaining,
                                  "C%d: %s%d.%02d°C; ", channel, sign, absValue / 100, absValue % 100);
             } else {
-                // LOW_RES: tenths (-4 → "-0.4°C")
+                // Tenths (-4 → "-0.4°C")
                 written = snprintf(statusBuffer + offset, remaining,
                                  "C%d: %s%d.%d°C; ", channel, sign, absValue / 10, absValue % 10);
             }
@@ -273,7 +275,7 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
             int written;
             const char* sign = (value < 0) ? "-" : "";
             int16_t absValue = (value < 0) ? -value : value;
-            if (currentRange == mb8art::MeasurementRange::HIGH_RES) {
+            if (isHundredths) {
                 written = snprintf(statusBuffer + offset, remaining,
                                  "C%d: OutOfRange(%s%d.%02d°C); ", channel, sign, absValue / 100, absValue % 100);
             } else {
@@ -291,25 +293,17 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
 
 
 int16_t MB8ART::processThermocoupleData(uint16_t rawData, mb8art::ThermocoupleType type) {
-    // MB8ART returns temperature based on measurement range
-    bool isHighRes = (currentRange == mb8art::MeasurementRange::HIGH_RES);
-    int16_t temperature = convertRawToTemperature(rawData, isHighRes);
+    // Thermocouple data is always tenths, not affected by the resolution register
+    int16_t temperature = convertRawToTemperature(rawData, false);
 
     // Use explicit sign handling for negative temperatures near zero
     [[maybe_unused]] const char* sign = (temperature < 0) ? "-" : "";
     [[maybe_unused]] int16_t absTemp = (temperature < 0) ? -temperature : temperature;
 
-    if (isHighRes) {
-        LOG_MB8ART_DEBUG_NL("Processing thermocouple data: Raw=0x%04X (%d), Type=%s, Temp=%s%d.%02d°C",
-                            rawData, rawData,
-                            mb8art::thermocoupleTypeToString(type),
-                            sign, absTemp / 100, absTemp % 100);
-    } else {
-        LOG_MB8ART_DEBUG_NL("Processing thermocouple data: Raw=0x%04X (%d), Type=%s, Temp=%s%d.%d°C",
-                            rawData, rawData,
-                            mb8art::thermocoupleTypeToString(type),
-                            sign, absTemp / 10, absTemp % 10);
-    }
+    LOG_MB8ART_DEBUG_NL("Processing thermocouple data: Raw=0x%04X (%d), Type=%s, Temp=%s%d.%d°C",
+                        rawData, rawData,
+                        mb8art::thermocoupleTypeToString(type),
+                        sign, absTemp / 10, absTemp % 10);
 
     return temperature;
 }

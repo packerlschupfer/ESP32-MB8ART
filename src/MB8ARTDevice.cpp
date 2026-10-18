@@ -516,8 +516,8 @@ IDeviceInstance::DeviceResult<std::vector<float>> MB8ART::getData(IDeviceInstanc
             // Build vector of temperature values
             // Convert from int16_t to float for IDeviceInstance interface
             // Divider is PER-CHANNEL based on sensor type:
-            // - PT1000 + HIGH_RES: hundredths (÷100)
-            // - PT100 (any mode): tenths (÷10) - PT100 does NOT support HIGH_RES
+            // - PT/RTD + HIGH_RES: hundredths (÷100)
+            // - Current: hundredths of mA (÷100)
             // - All others: tenths (÷10)
             //
             // Emit ONE entry per physical channel so vector index == channel
@@ -584,8 +584,8 @@ int16_t MB8ART::getDataScaleDivider(IDeviceInstance::DeviceDataType dataType) co
         case IDeviceInstance::DeviceDataType::TEMPERATURE:
             // LOW_RES: tenths (divide by 10), HIGH_RES: hundredths (divide by 100)
             // Note: This returns the "default" divider. For per-channel accuracy,
-            // use getDataScaleDivider(dataType, channel) since PT100 sensors
-            // do NOT support HIGH_RES mode (always tenths).
+            // use getDataScaleDivider(dataType, channel): thermocouples are always
+            // tenths and current channels hundredths of mA.
             return (currentRange == mb8art::MeasurementRange::HIGH_RES) ? 100 : 10;
         default:
             return 1;

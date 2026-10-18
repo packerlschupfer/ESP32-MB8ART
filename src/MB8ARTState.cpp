@@ -95,8 +95,8 @@ bool MB8ART::waitForInitStep(EventBits_t stepBit, const char* stepName, TickType
 int16_t MB8ART::getSensorTemperature(uint8_t sensorIndex) const {
     if (sensorIndex < DEFAULT_NUMBER_OF_SENSORS) {
         int16_t temp = sensorReadings[sensorIndex].temperature;
-        // Format based on measurement range
-        if (currentRange == mb8art::MeasurementRange::HIGH_RES) {
+        // Format per channel (see getDataScaleDivider)
+        if (getDataScaleDivider(IDeviceInstance::DeviceDataType::TEMPERATURE, sensorIndex) == 100) {
             LOG_MB8ART_DEBUG_NL("getSensorTemperature(%d) = %d.%02d°C",
                                sensorIndex, temp / 100, abs(temp % 100));
         } else {
@@ -267,9 +267,12 @@ std::vector<int16_t> MB8ART::getTemperatures() const {
 }
 
 float MB8ART::getScaleFactor(size_t channel) const {
-    // Scale factor for converting raw int16_t to float temperature
-    // - LOW_RES: 0.1°C resolution (divide by 10)
-    // - HIGH_RES: 0.01°C resolution (divide by 100)
+    // Scale factor for converting a channel's raw int16_t value to float
+    // (per channel, see getDataScaleDivider: 0.01 for hundredths, 0.1 for tenths)
     // Note: Prefer integer math where possible (rawTemp / 100, rawTemp % 100)
-    return (currentRange == mb8art::MeasurementRange::HIGH_RES) ? 0.01f : 0.1f;
+    if (channel >= DEFAULT_NUMBER_OF_SENSORS) {
+        return (currentRange == mb8art::MeasurementRange::HIGH_RES) ? 0.01f : 0.1f;
+    }
+    return (getDataScaleDivider(IDeviceInstance::DeviceDataType::TEMPERATURE,
+                                static_cast<uint8_t>(channel)) == 100) ? 0.01f : 0.1f;
 }
