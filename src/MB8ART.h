@@ -27,6 +27,7 @@
 #include "freertos/semphr.h"
 #include "freertos/timers.h"
 #include <array>
+#include <atomic>
 #include <functional>
 #include "QueuedModbusDevice.h"
 #include "ModbusTypes.h"
@@ -35,6 +36,7 @@
 #include "CommonModbusDefinitions.h"
 #include "MB8ARTLoggingMacros.h"
 #include "MB8ARTSharedResources.h"
+#include "MB8ARTOffsets.h"
 
 // Import ModbusDevice types into global scope for MB8ART usage
 using modbus::ModbusResult;
@@ -143,6 +145,12 @@ enum class ChannelMode : uint16_t {
     VOLTAGE = 0x03,
     CURRENT = 0x04,
 };
+
+// MB8ARTOffsets.h mirrors these values so it stays dependency-free
+static_assert(static_cast<uint16_t>(ChannelMode::THERMOCOUPLE) == OFFSET_MODE_THERMOCOUPLE,
+              "MB8ARTOffsets.h thermocouple mode out of sync");
+static_assert(static_cast<uint16_t>(ChannelMode::PT_INPUT) == OFFSET_MODE_PT_INPUT,
+              "MB8ARTOffsets.h PT mode out of sync");
 
 // Define sub-types for Thermocouple, PT, Voltage, and Current
 enum class ThermocoupleType : uint16_t {
@@ -383,6 +391,39 @@ public:
      * @endcode
      */
     void setHardwareConfig(const mb8art::SensorHardwareConfig* config);
+
+    /**
+     * @brief Set a per-channel temperature offset (calibration)
+     *
+     * The offset is added to the value written through the bound temperature pointer.
+     * It is applied only while the channel is a temperature channel (PT_INPUT or
+     * THERMOCOUPLE); current and voltage channels are never offset. The mode is checked
+     * on every reading, not here, so an offset set before the channel config has been
+     * read from the device takes effect once it has.
+     *
+     * Uncorrected values stay available: getSensorReadings(), getData() and
+     * getDataRaw() report what the hardware measured.
+     *
+     * @param channel Channel index (0-7)
+     * @param offsetTenths Offset in tenths of a degree (e.g. -23 = -2.3 C), max +-500
+     * @return false if the channel or offset is out of range (nothing stored)
+     */
+    bool setChannelOffset(uint8_t channel, int16_t offsetTenths);
+
+    /**
+     * @brief Set all eight channel offsets at once
+     *
+     * All values are validated first; if any is out of range nothing is stored.
+     *
+     * @param offsetsTenths Offsets in tenths of a degree, index = channel
+     * @return false if any offset is out of range (nothing stored)
+     */
+    bool setChannelOffsets(const std::array<int16_t, 8>& offsetsTenths);
+
+    /**
+     * @brief Get the stored offset for a channel, in tenths (0 for an invalid channel)
+     */
+    int16_t getChannelOffset(uint8_t channel) const;
 
     // MB8ART configuration methods
     bool configure();
@@ -648,6 +689,9 @@ private:
     // Unified mapping architecture
     const mb8art::SensorHardwareConfig* hardwareConfig; // Pointer to constexpr hardware config (flash)
     std::array<mb8art::SensorBinding, 8> sensorBindings; // Runtime sensor bindings (RAM)
+    // Per-channel offsets in tenths. Written by the application's task, read on the
+    // Modbus processing task; atomics keep each value whole without a lock.
+    std::array<std::atomic<int16_t>, 8> channelOffsets;
 
     static TickType_t lastGlobalDataUpdate;
     uint8_t channelsConfiguredDuringInit;  // Bitmask to track configured channels during init
@@ -738,10 +782,9 @@ private:
     // Process different sensor types
     int16_t processThermocoupleData(uint16_t rawData, mb8art::ThermocoupleType type);
     int16_t processPTData(uint16_t rawData, mb8art::PTType type, mb8art::MeasurementRange range);
-    int16_t processVoltageData(uint16_t rawData, mb8art::VoltageRange range);   // Note: returns raw value for now
-    int16_t processCurrentData(uint16_t rawData, mb8art::CurrentRange range);   // Note: returns raw value for now
+    int16_t processVoltageData(uint16_t rawData, mb8art::VoltageRange range);   // Returns raw value (voltage scaling not implemented)
+    int16_t processCurrentData(uint16_t rawData, mb8art::CurrentRange range);   // Returns hundredths of mA
     int16_t convertRawToTemperature(uint16_t rawData, bool highResolution);
-    int16_t applyTemperatureCorrection(int16_t temperature);
 
     // Member variables for state tracking
     ModuleSettings moduleSettings;

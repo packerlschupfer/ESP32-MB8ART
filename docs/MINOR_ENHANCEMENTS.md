@@ -20,6 +20,10 @@ This document outlines minor enhancements identified during architecture analysi
 
 ## Enhancement 1: Per-Channel Temperature Calibration
 
+> **Implemented in v0.1.0** as runtime offsets (`setChannelOffset()` / `setChannelOffsets()`),
+> applied to bound temperature channels only. See README "Per-Channel Calibration Offsets".
+> The text below is the original proposal.
+
 ### Current Implementation
 **Location:** `src/MB8ARTSensor.cpp:45-50`
 

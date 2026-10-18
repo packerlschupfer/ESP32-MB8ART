@@ -65,13 +65,6 @@ int16_t MB8ART::convertRawToTemperature(uint16_t rawData, bool highResolution) {
     return static_cast<int16_t>(rawData);
 }
 
-int16_t MB8ART::applyTemperatureCorrection(int16_t temperature) {
-    // Simple offset correction, can be expanded based on calibration needs
-    // Offset in tenths of degrees (e.g., 5 = 0.5°C offset)
-    static constexpr int16_t TEMPERATURE_OFFSET = 0;
-    return temperature + TEMPERATURE_OFFSET;
-}
-
 void MB8ART::markChannelDeactivated(uint8_t channel, EventBits_t& errorBitsToSet, 
                                    char* statusBuffer, size_t bufferSize, int& offset) {
     sensorReadings[channel].isTemperatureValid = false;
@@ -223,7 +216,12 @@ void MB8ART::updateSensorReading(uint8_t channel, int16_t value,
         }
 
         if (sensorBindings[channel].temperaturePtr != nullptr) {
-            *sensorBindings[channel].temperaturePtr = valueInTenths;
+            // Calibration offset applies to the bound value only; sensorReadings keeps
+            // the uncorrected hardware value. Non-temperature modes are never offset.
+            *sensorBindings[channel].temperaturePtr = mb8art::applyChannelOffset(
+                valueInTenths,
+                channelOffsets[channel].load(std::memory_order_relaxed),
+                channelConfigs[channel].mode);
         }
         if (sensorBindings[channel].validityPtr != nullptr) {
             *sensorBindings[channel].validityPtr = true;
@@ -339,8 +337,8 @@ int16_t MB8ART::processPTData(uint16_t rawData, mb8art::PTType type, mb8art::Mea
 
 
 int16_t MB8ART::processVoltageData(uint16_t rawData, mb8art::VoltageRange range) {
-    // For now, just return raw value since voltage/current mode isn't used
-    // TODO: Implement proper voltage scaling if needed
+    // Voltage scaling is not implemented: returns the raw register value.
+    // (Current mode is scaled - see processCurrentData() below.)
     (void)range;  // Suppress unused warning
 
     LOG_MB8ART_DEBUG_NL("Processing voltage data: Raw=0x%04X, Range=%s (raw value returned)",

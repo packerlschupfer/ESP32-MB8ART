@@ -230,6 +230,28 @@ tempModule.configureChannelRange(0, 3,  // Channels 0-3
 tempModule.configureMeasurementRange(mb8art::MeasurementRange::HIGH_RES);
 ```
 
+### Per-Channel Calibration Offsets
+
+Offsets are in tenths of a degree (range ±500) and are added to the value written through the
+bound temperature pointer (`bindSensorPointers()`).
+
+```cpp
+// One channel: outside sensor reads 2.3°C warm
+tempModule.setChannelOffset(3, -23);
+
+// All channels at once (all-or-nothing validation)
+std::array<int16_t, 8> offsets = {{0, 5, 0, -23, 0, 0, 0, 0}};
+tempModule.setChannelOffsets(offsets);
+```
+
+- Offsets apply only while a channel is a temperature input (PT or thermocouple). Current and
+  voltage channels (e.g. a 4-20mA pressure transducer) are never offset.
+- The channel mode is checked on every reading, not when the offset is set, so offsets restored
+  at boot take effect once the channel config has been read from the module.
+- The uncorrected value stays available: `getSensorReadings()`, `getData()` and `getDataRaw()`
+  report what the hardware measured. Only the bound pointer is corrected.
+- With all offsets at 0 (the default) readings are unchanged.
+
 ### Connection Monitoring
 
 ```cpp
@@ -287,6 +309,9 @@ tempModule.registerModbusResponseCallback(
 - `configureAllChannels(mode, subType)` - Configure all channels
 - `configureChannelRange(start, end, mode, subType)` - Configure channel range
 - `configureMeasurementRange(range)` - Set temperature resolution
+- `setChannelOffset(channel, tenths)` - Set a calibration offset for one channel
+- `setChannelOffsets(offsets)` - Set all eight calibration offsets
+- `getChannelOffset(channel)` - Get the stored offset for a channel
 
 #### Status and Monitoring
 - `isModuleResponsive()` - Check if module is communicating

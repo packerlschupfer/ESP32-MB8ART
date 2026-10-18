@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2025-12-04
+## [0.1.0] - 2026-10-19
 
 ### Added
 - Initial public release
@@ -26,10 +26,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thread-safe operations with mutex protection
 - Event group integration for FreeRTOS synchronization
 - High-resolution and standard measurement modes
+- Per-channel temperature calibration offsets: `setChannelOffset()`, `setChannelOffsets()`,
+  `getChannelOffset()`. Offsets are in tenths of a degree (±500) and are applied to the value
+  written through the bound temperature pointer, only for temperature channels (PT,
+  thermocouple), checked per reading: current/voltage channels are never offset, and offsets set
+  before the channel config has been read still take effect. `getSensorReadings()`, `getData()`
+  and `getDataRaw()` stay uncorrected.
+- Native unit tests for the offset rules (`test/test/test_channel_offsets`).
+
+### Removed
+- `applyTemperatureCorrection()`, a private placeholder with a fixed 0 offset that was never called.
+
+### Fixed
+- HIGH_RES upper range limit (85000) overflowed `int16_t` and wrapped to 19464, so readings
+  from 194.65 °C to 200.00 °C were rejected; now 20000 (200.00 °C, the specified HIGH_RES range).
+- Resolution is applied per channel, as `getData()` already did: thermocouples in HIGH_RES were
+  read as hundredths (bound value 10x too low), thermocouple readings above 850.0 °C were
+  rejected (now valid to 1800.0 °C), and current channels in LOW_RES were written to the bound
+  pointer unconverted. PT/RTD channels are unchanged.
+- Stale comments claiming current-mode data is returned raw; it is scaled to hundredths of mA.
 
 Platform: ESP32 (Arduino/ESP-IDF)
 Hardware: MB8ART 8-channel temperature module (Modbus RTU)
-License: MIT
+License: GPL-3
 Dependencies: ESP32-ModbusDevice, ESP32-IDeviceInstance, MutexGuard
 
 ### Notes

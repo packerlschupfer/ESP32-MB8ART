@@ -505,4 +505,47 @@ void MB8ART::setHardwareConfig(const mb8art::SensorHardwareConfig* config) {
     LOG_MB8ART_DEBUG_NL("Hardware config set successfully (constexpr array in flash)");
 }
 
+bool MB8ART::setChannelOffset(uint8_t channel, int16_t offsetTenths) {
+    if (!mb8art::isValidChannelOffset(channel, offsetTenths)) {
+        LOG_MB8ART_ERROR_NL("Channel offset rejected: channel %d, offset %d tenths (max +-%d)",
+                            channel, offsetTenths, mb8art::MAX_CHANNEL_OFFSET_TENTHS);
+        return false;
+    }
+
+    channelOffsets[channel].store(offsetTenths, std::memory_order_relaxed);
+
+    // Advisory only: the mode is checked again on every reading
+    uint16_t mode = channelConfigs[channel].mode;
+    if (offsetTenths != 0 && mode != static_cast<uint16_t>(mb8art::ChannelMode::DEACTIVATED) &&
+        !mb8art::isTemperatureMode(mode)) {
+        LOG_MB8ART_WARN_NL("Channel %d offset %d stored but not applied: channel is %s, not a temperature input",
+                           channel, offsetTenths,
+                           mb8art::channelModeToString(static_cast<mb8art::ChannelMode>(mode)));
+    } else {
+        LOG_MB8ART_DEBUG_NL("Channel %d offset set to %d tenths", channel, offsetTenths);
+    }
+    return true;
+}
+
+bool MB8ART::setChannelOffsets(const std::array<int16_t, 8>& offsetsTenths) {
+    for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
+        if (!mb8art::isValidChannelOffset(i, offsetsTenths[i])) {
+            LOG_MB8ART_ERROR_NL("Channel offsets rejected: channel %d offset %d tenths (max +-%d), nothing stored",
+                                i, offsetsTenths[i], mb8art::MAX_CHANNEL_OFFSET_TENTHS);
+            return false;
+        }
+    }
+    for (uint8_t i = 0; i < DEFAULT_NUMBER_OF_SENSORS; i++) {
+        setChannelOffset(i, offsetsTenths[i]);
+    }
+    return true;
+}
+
+int16_t MB8ART::getChannelOffset(uint8_t channel) const {
+    if (channel >= DEFAULT_NUMBER_OF_SENSORS) {
+        return 0;
+    }
+    return channelOffsets[channel].load(std::memory_order_relaxed);
+}
+
 

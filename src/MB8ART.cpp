@@ -49,6 +49,10 @@ MB8ART::MB8ART(uint8_t sensorAddress, const char* tag)
     // Logger is now handled by global Logger::getInstance()
     // No need for special initialization
 
+    for (auto& offset : channelOffsets) {
+        offset.store(0, std::memory_order_relaxed);
+    }
+
     MB8ART_LOG_INIT_STEP("Creating MB8ART instance");
 
     // Create event groups (RYN4 interleaved pattern - saves one event group)
@@ -569,7 +573,6 @@ void MB8ART::printChannelDiagnostics() {
 
 // convertRawToTemperature is now in MB8ARTSensor.cpp
 
-// applyTemperatureCorrection is now in MB8ARTSensor.cpp
 
 // isTemperatureInRange is now in MB8ARTState.cpp
 
